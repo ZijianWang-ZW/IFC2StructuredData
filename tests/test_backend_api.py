@@ -42,6 +42,23 @@ class FakeGraphStore(GraphStore):
     def get_building_objects(self, global_ids: List[str]) -> List[Dict[str, Any]]:
         return [self.objects[g] for g in global_ids if g in self.objects]
 
+    def get_building_object_summaries(self, global_ids: List[str]) -> List[Dict[str, Any]]:
+        out = []
+        for gid in global_ids:
+            obj = self.objects.get(gid)
+            if obj is None:
+                continue
+            out.append(
+                {
+                    "GlobalId": gid,
+                    "ifcType": obj.get("ifcType"),
+                    "name": obj.get("name"),
+                    "hasGeometry": obj.get("hasGeometry"),
+                    "geometryMethod": obj.get("geometryMethod"),
+                }
+            )
+        return out
+
     def get_neighborhood_object_ids(self, global_id: str, hops: int, limit: int) -> List[str]:
         if global_id not in self.objects:
             return []
@@ -169,6 +186,8 @@ class TestBackendAPI(unittest.TestCase):
         data = r.json()
         self.assertIn("nodes", data)
         self.assertGreaterEqual(len(data["nodes"]["buildingObjects"]), 1)
+        self.assertIn("ifcType", data["nodes"]["buildingObjects"][0])
+        self.assertNotIn("attributesJson", data["nodes"]["buildingObjects"][0])
 
     def test_root_frontend(self) -> None:
         r = self.client.get("/")

@@ -41,6 +41,15 @@ class TestCsvGraphStore(unittest.TestCase):
         self.assertIn("geometry_nodes", geometry)
         self.assertIn("uses_geometry_edges", geometry)
 
+    def test_building_object_summaries(self) -> None:
+        ids = self.store.get_all_object_ids(limit=5)
+        summaries = self.store.get_building_object_summaries(ids)
+        self.assertGreaterEqual(len(summaries), 1)
+        sample = summaries[0]
+        self.assertIn("GlobalId", sample)
+        self.assertIn("ifcType", sample)
+        self.assertNotIn("attributesJson", sample)
+
 
 if __name__ == "__main__":
     unittest.main()

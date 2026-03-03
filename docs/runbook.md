@@ -102,6 +102,8 @@ curl http://127.0.0.1:8000/api/viewer/index
 
 ## 8. Week 6 Acceptance
 
+Dataset/API baseline (allows empty viewer index):
+
 ```bash
 python scripts/week6_acceptance.py \
   --output-dir example_str \
@@ -109,6 +111,26 @@ python scripts/week6_acceptance.py \
   --viewer-files-dir /Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer \
   --frontend-dir /Users/zijian/Desktop/IFC2StructuredData/frontend
 ```
+
+Strict dual-pane acceptance (requires viewer index overlap with graph):
+
+```bash
+python scripts/week6_acceptance.py \
+  --output-dir /Users/zijian/Desktop/IFC2StructuredData/test_output/arch_v1_pm \
+  --viewer-index-path /Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer/object_index.json \
+  --report-path docs/week6_acceptance_arch_v1_strict.json \
+  --viewer-files-dir /Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer \
+  --frontend-dir /Users/zijian/Desktop/IFC2StructuredData/frontend \
+  --require-viewer-index \
+  --min-viewer-overlap 100
+```
+
+Interpretation:
+
+1. `PASS=True` means acceptance passed.
+2. In strict mode, script fails if:
+   - viewer index is empty, or
+   - viewer index has insufficient overlap with graph object IDs.
 
 ## 9. Troubleshooting
 

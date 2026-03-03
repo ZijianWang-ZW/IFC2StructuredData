@@ -5,10 +5,28 @@ import tempfile
 import unittest
 
 from utils.parquet2glb import convert_geometry_to_glb
-from viewer_assets.builder import extract_object_index_from_glb
+from viewer_assets.builder import _is_excluded_ifc_type, extract_object_index_from_glb
+
+
+class _FakeIfcEntity:
+    def __init__(self, type_name: str) -> None:
+        self.type_name = type_name
+
+    def is_a(self, type_name: str | None = None):
+        if type_name is None:
+            return self.type_name
+        if type_name == "IfcOpeningElement":
+            return self.type_name in {"IfcOpeningElement", "IfcFancyOpeningElement"}
+        return self.type_name == type_name
 
 
 class TestViewerAssets(unittest.TestCase):
+    def test_opening_filter_handles_subtypes(self) -> None:
+        excluded = {"IfcOpeningElement"}
+        self.assertTrue(_is_excluded_ifc_type(_FakeIfcEntity("IfcOpeningElement"), excluded))
+        self.assertTrue(_is_excluded_ifc_type(_FakeIfcEntity("IfcFancyOpeningElement"), excluded))
+        self.assertFalse(_is_excluded_ifc_type(_FakeIfcEntity("IfcWall"), excluded))
+
     def test_extract_object_index_from_glb(self) -> None:
         geometry_data = [
             {

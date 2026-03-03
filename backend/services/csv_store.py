@@ -63,6 +63,23 @@ class CsvGraphStore(GraphStore):
                 out.append(obj.copy())
         return out
 
+    def get_building_object_summaries(self, global_ids: List[str]) -> List[Dict[str, Any]]:
+        out = []
+        for gid in global_ids:
+            obj = self.objects.get(gid)
+            if obj is None:
+                continue
+            out.append(
+                {
+                    "GlobalId": gid,
+                    "ifcType": obj.get("ifcType"),
+                    "name": obj.get("name"),
+                    "hasGeometry": obj.get("hasGeometry"),
+                    "geometryMethod": obj.get("geometryMethod"),
+                }
+            )
+        return out
+
     def get_neighborhood_object_ids(self, global_id: str, hops: int, limit: int) -> List[str]:
         if global_id not in self.objects:
             return []

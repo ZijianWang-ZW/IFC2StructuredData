@@ -347,11 +347,52 @@ utils/
 4. V1 constraints: [docs/limitations_v1.md](docs/limitations_v1.md)
 5. V2 planning: [docs/backlog_v2.md](docs/backlog_v2.md)
 
-Generate Week6 acceptance JSON report with:
+## Testing (Refactor + Prototype)
+
+1. Run all unit tests:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+2. Run Week6 dataset/API acceptance (`example_str`):
 
 ```bash
 python scripts/week6_acceptance.py --output-dir example_str --report-path docs/week6_acceptance_report.json
 ```
+
+3. Run strict viewer+graph acceptance (requires non-empty viewer index overlap):
+
+```bash
+python scripts/week6_acceptance.py \
+  --output-dir /Users/zijian/Desktop/IFC2StructuredData/test_output/arch_v1_pm \
+  --viewer-index-path /Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer/object_index.json \
+  --report-path docs/week6_acceptance_arch_v1_strict.json \
+  --viewer-files-dir /Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer \
+  --frontend-dir /Users/zijian/Desktop/IFC2StructuredData/frontend \
+  --require-viewer-index \
+  --min-viewer-overlap 100
+```
+
+4. Manual browser check (CSV mode):
+
+```bash
+GRAPH_STORE_MODE=csv \
+GRAPH_OUTPUT_DIR=/Users/zijian/Desktop/IFC2StructuredData/test_output/arch_v1_pm \
+VIEWER_INDEX_PATH=/Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer/object_index.json \
+VIEWER_FILES_DIR=/Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer \
+FRONTEND_DIR=/Users/zijian/Desktop/IFC2StructuredData/frontend \
+VIEWER_MODEL_URL=/viewer-files/model.glb \
+python -m uvicorn backend.app:app --host 127.0.0.1 --port 8000
+```
+
+Then open `http://127.0.0.1:8000/` and verify:
+
+1. click viewer object <-> graph node bidirectional sync
+2. node/edge inspector details
+3. double-click expansion
+4. filters + big-picture/back-to-focus + camera presets
+5. invalid `GlobalId` focus does not overwrite existing selection
 
 ## License
 

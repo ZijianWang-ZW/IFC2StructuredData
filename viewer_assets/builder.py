@@ -29,6 +29,25 @@ logger = logging.getLogger(__name__)
 LOG_PROGRESS_INTERVAL = 1000
 
 
+def _is_excluded_ifc_type(element: Any, excluded_types: set[str]) -> bool:
+    """Return True when IFC entity should be excluded from viewer export."""
+    if element is None or not hasattr(element, "is_a"):
+        return False
+
+    for type_name in excluded_types:
+        try:
+            if bool(element.is_a(type_name)):
+                return True
+        except Exception:
+            continue
+
+    try:
+        raw_type = element.is_a()
+    except Exception:
+        return False
+    return raw_type in excluded_types
+
+
 def _make_geom_settings() -> Any:
     settings = geom.settings()
 
@@ -245,7 +264,7 @@ def build_viewer_assets(
     elements = [
         element
         for element in all_products
-        if element and hasattr(element, "is_a") and element.is_a() not in excluded_types
+        if not _is_excluded_ifc_type(element, excluded_types)
     ]
     excluded_count = len(all_products) - len(elements)
     viewer_dir = os.path.join(output_dir, "viewer")

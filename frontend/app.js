@@ -847,34 +847,43 @@ function parseAttributes(rawObject) {
 }
 
 async function showBuildingDetails(globalId) {
-  try {
-    let detail = state.objectDetailCache.get(globalId);
-    if (!detail) {
-      detail = await fetchJson(`/api/object/${encodeURIComponent(globalId)}`);
-      state.objectDetailCache.set(globalId, detail);
-    }
-    const object = detail.object || {};
-    const attributes = parseAttributes(object);
-    const usesGeometry = (detail.geometry?.uses_geometry_edges || []).map((edge) => ({
-      definitionId: edge.definitionId,
-      instanceParamsJson: edge.instanceParamsJson || null,
-    }));
+  const detail = await getBuildingDetail(globalId);
+  renderBuildingDetails(globalId, detail);
+}
 
-    setInspector('Building Node Attributes', {
-      nodeType: 'building',
-      GlobalId: object.GlobalId || globalId,
-      ifcType: object.ifcType || null,
-      name: object.name || null,
-      hasGeometry: object.hasGeometry,
-      geometryMethod: object.geometryMethod || null,
-      hasGeometryFilePath: object.hasGeometryFilePath || null,
-      viewer: detail.viewer || null,
-      usesGeometry,
-      attributes,
-    });
-  } catch (err) {
-    setInspector('Building Node Attributes', `Failed to load object detail: ${err.message || err}`);
+async function getBuildingDetail(globalId) {
+  let detail = state.objectDetailCache.get(globalId);
+  if (!detail) {
+    detail = await fetchJson(`/api/object/${encodeURIComponent(globalId)}`);
+    state.objectDetailCache.set(globalId, detail);
   }
+  const object = detail?.object;
+  if (!object || !object.GlobalId) {
+    throw new Error(`Invalid object detail payload for ${globalId}`);
+  }
+  return detail;
+}
+
+function renderBuildingDetails(globalId, detail) {
+  const object = detail.object || {};
+  const attributes = parseAttributes(object);
+  const usesGeometry = (detail.geometry?.uses_geometry_edges || []).map((edge) => ({
+    definitionId: edge.definitionId,
+    instanceParamsJson: edge.instanceParamsJson || null,
+  }));
+
+  setInspector('Building Node Attributes', {
+    nodeType: 'building',
+    GlobalId: object.GlobalId || globalId,
+    ifcType: object.ifcType || null,
+    name: object.name || null,
+    hasGeometry: object.hasGeometry,
+    geometryMethod: object.geometryMethod || null,
+    hasGeometryFilePath: object.hasGeometryFilePath || null,
+    viewer: detail.viewer || null,
+    usesGeometry,
+    attributes,
+  });
 }
 
 async function showGeometryDetails(definitionId) {
@@ -916,20 +925,37 @@ function showEdgeDetails(edgeData) {
 
 async function selectObject(globalId, source = 'api') {
   if (!globalId) return;
-  state.selectedGlobalId = globalId;
-  setText('selectedId', globalId);
+  const previousGlobalId = state.selectedGlobalId;
+  const previousType = previousGlobalId
+    ? state.objectTypeMap[previousGlobalId] || '-'
+    : '-';
 
-  setViewerSelection(globalId);
-  markGraphSelection(globalId);
-  clearEdgeSelection();
+  try {
+    if (source !== 'graph') {
+      await refreshNeighborhood(globalId);
+    }
 
-  if (source !== 'graph') {
-    await refreshNeighborhood(globalId);
+    const detail = await getBuildingDetail(globalId);
+
+    state.selectedGlobalId = globalId;
+    setText('selectedId', globalId);
+
+    setViewerSelection(globalId);
     markGraphSelection(globalId);
-  }
+    clearEdgeSelection();
 
-  await showBuildingDetails(globalId);
-  setText('selectedType', state.objectTypeMap[globalId] || '-');
+    if (source !== 'graph') {
+      markGraphSelection(globalId);
+    }
+
+    renderBuildingDetails(globalId, detail);
+    setText('selectedType', state.objectTypeMap[globalId] || detail.object?.ifcType || '-');
+  } catch (err) {
+    setText('selectedId', previousGlobalId || 'None');
+    setText('selectedType', previousType);
+    setStatus('graphStatus', `Focus failed: ${err.message || err}`, true);
+    throw err;
+  }
 }
 
 async function loadOverview() {

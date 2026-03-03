@@ -20,6 +20,10 @@ class GraphStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_building_object_summaries(self, global_ids: List[str]) -> List[Dict[str, Any]]:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_neighborhood_object_ids(self, global_id: str, hops: int, limit: int) -> List[str]:
         raise NotImplementedError
 

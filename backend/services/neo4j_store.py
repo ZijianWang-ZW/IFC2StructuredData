@@ -56,6 +56,32 @@ class Neo4jGraphStore(GraphStore):
                     out.append(data)
             return out
 
+    def get_building_object_summaries(self, global_ids: List[str]) -> List[Dict[str, Any]]:
+        if not global_ids:
+            return []
+        query = """
+            MATCH (o:BuildingObject)
+            WHERE o.GlobalId IN $global_ids
+            RETURN o.GlobalId AS GlobalId, o.ifcType AS ifcType, o.name AS name, o.hasGeometry AS hasGeometry, o.geometryMethod AS geometryMethod
+        """
+        with self.driver.session(database=self.database) as session:
+            rows = session.run(query, global_ids=global_ids)
+            out = []
+            for row in rows:
+                gid = row.get("GlobalId")
+                if not gid:
+                    continue
+                out.append(
+                    {
+                        "GlobalId": gid,
+                        "ifcType": row.get("ifcType"),
+                        "name": row.get("name"),
+                        "hasGeometry": row.get("hasGeometry"),
+                        "geometryMethod": row.get("geometryMethod"),
+                    }
+                )
+            return out
+
     def get_neighborhood_object_ids(self, global_id: str, hops: int, limit: int) -> List[str]:
         if hops not in (1, 2):
             raise ValueError("hops must be 1 or 2")

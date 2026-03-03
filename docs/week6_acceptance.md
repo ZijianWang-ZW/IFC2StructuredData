@@ -22,6 +22,19 @@ python scripts/week6_acceptance.py \
   --frontend-dir /Users/zijian/Desktop/IFC2StructuredData/frontend
 ```
 
+Strict dual-pane command (viewer/graph overlap required):
+
+```bash
+python scripts/week6_acceptance.py \
+  --output-dir /Users/zijian/Desktop/IFC2StructuredData/test_output/arch_v1_pm \
+  --viewer-index-path /Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer/object_index.json \
+  --report-path docs/week6_acceptance_arch_v1_strict.json \
+  --viewer-files-dir /Users/zijian/Desktop/IFC2StructuredData/test_output/viewer_arch/viewer \
+  --frontend-dir /Users/zijian/Desktop/IFC2StructuredData/frontend \
+  --require-viewer-index \
+  --min-viewer-overlap 100
+```
+
 Result:
 
 1. PASS = `true`
@@ -43,6 +56,8 @@ Result:
    - `/api/geometry/{definitionId}` 200
 5. Dry import:
    - `scripts/import_to_neo4j.py example_str --dry-run` return code 0
+6. Strict mode:
+   - viewer index non-empty and overlap check enforced by script flags
 
 ## Browser Validation (example_str runtime)
 
@@ -64,6 +79,7 @@ Observed:
 2. When viewer index is missing, UI degrades gracefully (`Graph: no viewer index data available`).
 3. Manual `Focus` by valid `GlobalId` still returns neighborhood and inspector data.
 4. Big-picture and back-to-focus controls remain functional (`~115ms` / `~5ms` in smoke run).
+5. Focus failure keeps previous selection unchanged (two-phase selection commit).
 
 ## Final Verdict
 

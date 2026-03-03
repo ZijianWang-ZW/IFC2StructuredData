@@ -54,7 +54,7 @@ class GraphService:
         if global_id not in object_ids:
             object_ids.append(global_id)
 
-        building_nodes = self.store.get_building_objects(object_ids)
+        building_nodes = self.store.get_building_object_summaries(object_ids)
         relates_edges = self.store.get_relates_edges(object_ids)
         geometry = self.store.get_geometry_for_objects(object_ids)
 
@@ -82,7 +82,7 @@ class GraphService:
 
     def get_full_graph(self, *, limit: int) -> Dict[str, Any]:
         object_ids = self.store.get_all_object_ids(limit)
-        building_nodes = self.store.get_building_objects(object_ids)
+        building_nodes = self.store.get_building_object_summaries(object_ids)
         relates_edges = self.store.get_relates_edges(object_ids)
         geometry = self.store.get_geometry_for_objects(object_ids)
         return {

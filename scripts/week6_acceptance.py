@@ -53,6 +53,17 @@ def _parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip scripts/import_to_neo4j.py --dry-run check",
     )
+    parser.add_argument(
+        "--require-viewer-index",
+        action="store_true",
+        help="Fail acceptance if viewer index is empty or has no overlap with graph object IDs",
+    )
+    parser.add_argument(
+        "--min-viewer-overlap",
+        type=int,
+        default=1,
+        help="Minimum overlap count between viewer index IDs and graph IDs when --require-viewer-index is enabled",
+    )
     return parser.parse_args()
 
 
@@ -183,11 +194,27 @@ def main() -> int:
             "building_count": len(building_nodes),
             "geometry_count": len(geometry_nodes),
         }
+        viewer_index_payload = viewer_index.get("json", {})
+        viewer_index_count = (
+            len(viewer_index_payload)
+            if isinstance(viewer_index_payload, dict)
+            else 0
+        )
+        building_id_set = {
+            n.get("GlobalId")
+            for n in building_nodes
+            if isinstance(n, dict) and n.get("GlobalId")
+        }
+        viewer_id_set = (
+            set(viewer_index_payload.keys())
+            if isinstance(viewer_index_payload, dict)
+            else set()
+        )
+        viewer_overlap_count = len(viewer_id_set & building_id_set)
         api_check["viewer_index"] = {
             "status_code": viewer_index.get("status_code"),
-            "count": len(viewer_index.get("json", {}))
-            if isinstance(viewer_index.get("json"), dict)
-            else None,
+            "count": viewer_index_count,
+            "overlap_with_graph_count": viewer_overlap_count,
         }
         api_check["root"] = {"status_code": root.get("status_code")}
         api_check["sample_global_id"] = center_global_id
@@ -214,10 +241,18 @@ def main() -> int:
             health.get("status_code") == 200,
             overview.get("status_code") == 200,
             full.get("status_code") == 200,
+            root.get("status_code") == 200,
             neighborhood.get("status_code") == 200 if center_global_id else False,
             object_detail.get("status_code") == 200 if center_global_id else False,
             geometry_detail.get("status_code") == 200 if geometry_nodes else True,
         ]
+        if args.require_viewer_index:
+            pass_conditions.extend(
+                [
+                    viewer_index_count > 0,
+                    viewer_overlap_count >= max(0, args.min_viewer_overlap),
+                ]
+            )
     report["summary"] = {
         "pass": all(pass_conditions),
         "pass_conditions": pass_conditions,
