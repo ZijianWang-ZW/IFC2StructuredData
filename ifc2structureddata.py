@@ -5,9 +5,10 @@ IFC2StructuredData — Convert IFC files to structured data
 Outputs:
 - attribute.csv: element attributes with has_geometry flag
 - relationships.csv: element relationships
-- geometry/{guid}.obj + .mtl: per-element geometry files (world coords, meters)
+- geometry_library.csv: unique parametric geometry definitions (deduplicated)
+- geometry_instance.csv: per-element geometry index (all elements with geometry)
+- geometry/{guid}.obj + .mtl: mesh files for non-parametric elements only
 - meta.json: model metadata
-- model.glb (optional, with --glb flag)
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from utils.metadata import parse_metadata, save_meta
 from utils.geometry import build_geometry
 from utils.relationships import extract_relationships
 from utils.attributes import extract_attributes
-from utils.parquet2glb import convert_geometry_to_glb
+from utils.parametric import pre_classify_geometry, extract_parametric_geometry
 
 try:
     import psutil
@@ -40,8 +41,6 @@ try:
 except ImportError:
     def _log_memory(logger, stage: str) -> float:
         return 0.0
-
-GLB_FILTER_TYPES = ['IfcOpeningElement', 'IfcSpace', 'IfcAnnotation']
 
 
 class UserCancellationRequested(Exception):
@@ -107,11 +106,23 @@ def _cleanup_logging(handlers: List[logging.Handler]) -> None:
             pass
 
 
+def _sanitize(val):
+    """Sanitize a value for CSV output."""
+    if val is None:
+        return None
+    if isinstance(val, (str, int, float, bool)):
+        return val
+    if isinstance(val, (list, dict)):
+        try:
+            return json.dumps(val)
+        except Exception:
+            return str(val)
+    return str(val)
+
+
 def run_parse(
     ifc_file_path: str,
     output_folder: str,
-    make_glb: bool = False,
-    glb_path: Optional[str] = None,
     *,
     threads: int = 4,
     should_cancel: Optional[Callable[[], bool]] = None
@@ -143,25 +154,55 @@ def run_parse(
     logger.info(f"Loaded IFC: {num_elements} elements")
     memory_mb['after_load'] = _log_memory(logger, "After load")
 
-    # Step 1: Extract geometry — write OBJ + MTL per element
-    logger.info('Step 1/4: Extracting geometry (OBJ + MTL per element)...')
+    # Pre-classify: parametric (CSV) vs non-parametric (OBJ)
+    logger.info('Pre-classifying geometry types...')
+    t_classify = time.perf_counter()
+    parametric_guids, non_parametric_elements = pre_classify_geometry(elements)
+    timings['classify'] = time.perf_counter() - t_classify
+
+    # Step 1: Tessellate non-parametric elements only → OBJ files
+    logger.info(f'Step 1/5: Tessellating {len(non_parametric_elements)} non-parametric elements (OBJ)...')
     t1 = time.perf_counter()
-    guids_with_geometry, geometry_memory, geom_stats = build_geometry(
-        ifc, elements, output_dir=output_folder, num_threads=threads
+    mesh_guids, geom_stats = build_geometry(
+        ifc, non_parametric_elements, output_dir=output_folder, num_threads=threads
     )
     timings['mesh'] = time.perf_counter() - t1
-    elements_with_geometry = len(guids_with_geometry)
-    guids_with_geometry_set = set(guids_with_geometry)
-    logger.info(f"Geometry: {elements_with_geometry} elements with geometry")
+    logger.info(f"Mesh: {len(mesh_guids)} OBJ files written")
     memory_mb['after_mesh'] = _log_memory(logger, "After mesh")
+
+    # Combined geometry set: parametric (CSV) + non-parametric (OBJ)
+    guids_with_geometry_set = parametric_guids | set(mesh_guids)
+    elements_with_geometry = len(guids_with_geometry_set)
 
     if should_cancel and should_cancel():
         raise UserCancellationRequested('Cancelled after step 1')
 
-    # Step 2: Extract attributes
-    logger.info('Step 2/4: Extracting attributes...')
+    # Step 2: Extract parametric geometry → library + instance CSV
+    logger.info('Step 2/5: Extracting parametric geometry (instanced)...')
     t2 = time.perf_counter()
+    library_df, instance_df = extract_parametric_geometry(elements, guids_with_geometry_set)
+
+    library_path = os.path.join(output_folder, 'geometry_library.csv')
+    instance_path = os.path.join(output_folder, 'geometry_instance.csv')
+    library_df.to_csv(library_path, index=False)
+    instance_df.to_csv(instance_path, index=False)
+
+    n_definitions = len(library_df)
+    n_instances = len(instance_df)
+    n_parametric = int(instance_df['definition_id'].notna().sum()) if n_instances > 0 else 0
+    timings['parametric'] = time.perf_counter() - t2
+    logger.info(f"Parametric: {n_definitions} definitions, {n_instances} instances ({n_parametric} parametric)")
+    del library_df, instance_df
+
+    if should_cancel and should_cancel():
+        raise UserCancellationRequested('Cancelled after step 2')
+
+    # Step 3: Extract attributes
+    logger.info('Step 3/5: Extracting attributes...')
+    t3 = time.perf_counter()
     att_df = extract_attributes(elements)
+
+    # Free elements
     elements = None
     gc.collect()
     memory_mb['after_attributes'] = _log_memory(logger, "After attributes")
@@ -173,18 +214,6 @@ def run_parse(
         att_df['has_geometry'] = False
 
     # Sanitize columns for CSV
-    def _sanitize(val):
-        if val is None:
-            return None
-        if isinstance(val, (str, int, float, bool)):
-            return val
-        if isinstance(val, (list, dict)):
-            try:
-                return json.dumps(val)
-            except Exception:
-                return str(val)
-        return str(val)
-
     for col in att_df.columns:
         if att_df[col].dtype == 'object':
             att_df[col] = att_df[col].map(_sanitize)
@@ -194,71 +223,35 @@ def run_parse(
     if none_cols:
         att_df = att_df.drop(columns=none_cols)
 
-    # Write attribute.csv
     attribute_path = os.path.join(output_folder, 'attribute.csv')
-    logger.info("Writing attribute.csv...")
     att_df.to_csv(attribute_path, index=False)
-    timings['attributes'] = time.perf_counter() - t2
-    memory_mb['after_csv'] = _log_memory(logger, "After CSV")
-    gc.collect()
-
-    if should_cancel and should_cancel():
-        raise UserCancellationRequested('Cancelled after step 2')
-
-    # Step 3: Relationships
-    logger.info('Step 3/4: Extracting relationships...')
-    t3 = time.perf_counter()
-    rel_df = extract_relationships(ifc)
-    rel_count = len(rel_df)
-    relationships_path = os.path.join(output_folder, 'relationships.csv')
-    rel_df.to_csv(relationships_path, index=False)
-    timings['relationships'] = time.perf_counter() - t3
-    rel_df = None
+    timings['attributes'] = time.perf_counter() - t3
+    del att_df
     gc.collect()
 
     if should_cancel and should_cancel():
         raise UserCancellationRequested('Cancelled after step 3')
 
-    # Step 4: Metadata
-    logger.info('Step 4/4: Writing metadata...')
+    # Step 4: Relationships
+    logger.info('Step 4/5: Extracting relationships...')
     t4 = time.perf_counter()
+    rel_df = extract_relationships(ifc)
+    rel_count = len(rel_df)
+    relationships_path = os.path.join(output_folder, 'relationships.csv')
+    rel_df.to_csv(relationships_path, index=False)
+    timings['relationships'] = time.perf_counter() - t4
+    del rel_df
+    gc.collect()
+
+    if should_cancel and should_cancel():
+        raise UserCancellationRequested('Cancelled after step 4')
+
+    # Step 5: Metadata
+    logger.info('Step 5/5: Writing metadata...')
+    t5 = time.perf_counter()
     meta = parse_metadata(ifc, ifc_file_path)
     json_path = save_meta(meta, output_folder, 0.0, object_count=num_elements)
-    timings['metadata'] = time.perf_counter() - t4
-
-    # Optional GLB
-    glb_created = None
-    if make_glb:
-        try:
-            logger.info('Generating GLB...')
-            memory_mb['before_glb'] = _log_memory(logger, "Before GLB")
-
-            # Filter out GLB_FILTER_TYPES
-            # Build a set of types to exclude by looking up each guid in att_df
-            type_by_guid = {}
-            if 'GlobalId' in att_df.columns and 'type' in att_df.columns:
-                type_by_guid = dict(zip(att_df['GlobalId'], att_df['type']))
-
-            filtered_geometry = [
-                g for g in geometry_memory
-                if type_by_guid.get(g['GlobalId']) not in GLB_FILTER_TYPES
-            ]
-            logger.info(f"Filtered: {len(filtered_geometry)} elements for GLB (from {len(geometry_memory)})")
-
-            t5 = time.perf_counter()
-            glb_out = glb_path or os.path.join(output_folder, 'model.glb')
-            glb_created = convert_geometry_to_glb(filtered_geometry, glb_out)
-            timings['glb'] = time.perf_counter() - t5
-
-            logger.info(f"GLB created: {glb_created}")
-            memory_mb['after_glb'] = _log_memory(logger, "After GLB")
-
-            del filtered_geometry
-            gc.collect()
-        except Exception as e:
-            logger.exception(f"GLB generation failed: {e}")
-    else:
-        timings['glb'] = 0.0
+    timings['metadata'] = time.perf_counter() - t5
 
     # Results
     total_time = time.perf_counter() - start
@@ -267,28 +260,34 @@ def run_parse(
     stats = {
         'total_elements': num_elements,
         'elements_with_geometry': elements_with_geometry,
+        'parametric_elements': len(parametric_guids),
+        'mesh_elements': len(mesh_guids),
+        'geometry_definitions': n_definitions,
         'relationships_count': rel_count,
-        'geometry': geom_stats,
+        'mesh': geom_stats,
     }
 
     # Print summary
     print(f"\n{'='*50}")
-    print(f"Total Elements: {num_elements}")
-    print(f"Elements with Geometry: {elements_with_geometry}")
-    print(f"Open IFC: {timings.get('open_ifc', 0):.2f}s")
-    print(f"Mesh: {timings.get('mesh', 0):.2f}s")
-    print(f"Attributes: {timings.get('attributes', 0):.2f}s")
-    print(f"Relationships: {timings.get('relationships', 0):.2f}s")
-    print(f"GLB: {timings.get('glb', 0):.2f}s")
-    print(f"Total: {total_time:.2f}s")
-    print(f"\nMemory:")
-    print(f"  Peak: {peak_memory:.0f} MB")
+    print(f"Total Elements:     {num_elements}")
+    print(f"With Geometry:      {elements_with_geometry}")
+    print(f"  Parametric (CSV): {len(parametric_guids)}")
+    print(f"  Mesh (OBJ):       {len(mesh_guids)}")
+    print(f"  Definitions:      {n_definitions}")
+    print(f"Open IFC:       {timings.get('open_ifc', 0):.2f}s")
+    print(f"Classify:       {timings.get('classify', 0):.2f}s")
+    print(f"Mesh:           {timings.get('mesh', 0):.2f}s")
+    print(f"Parametric:     {timings.get('parametric', 0):.2f}s")
+    print(f"Attributes:     {timings.get('attributes', 0):.2f}s")
+    print(f"Relationships:  {timings.get('relationships', 0):.2f}s")
+    print(f"Metadata:       {timings.get('metadata', 0):.2f}s")
+    print(f"Total:          {total_time:.2f}s")
+    print(f"Peak Memory:    {peak_memory:.0f} MB")
     print(f"{'='*50}")
 
     # Cleanup
     logger.info("Cleaning up...")
-    del att_df, ifc
-    del geometry_memory
+    del ifc
 
     if is_temp:
         try:
@@ -299,19 +298,18 @@ def run_parse(
     gc.collect()
     _cleanup_logging(log_handlers)
 
-    geometry_folder = os.path.join(output_folder, 'geometry')
-
     return {
         'success': True,
         'output_folder': output_folder,
         'attribute_file': attribute_path,
-        'geometry_folder': geometry_folder,
+        'geometry_folder': os.path.join(output_folder, 'geometry'),
+        'geometry_library_file': library_path,
+        'geometry_instance_file': instance_path,
         'relationships_file': relationships_path,
         'json_file': json_path,
         'metadata': meta,
         'processing_time': total_time,
         'statistics': stats,
-        'glb_file': glb_created,
         'timings': timings,
         'memory': memory_mb,
     }
@@ -321,22 +319,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description='IFC Parser')
     parser.add_argument('ifc_file', help='Path to IFC file')
     parser.add_argument('output_folder', help='Output directory')
-    parser.add_argument('--glb', nargs='?', const=True, default=False, help='Generate GLB')
     parser.add_argument('--threads', type=int, default=4, help='Threads (default: 4)')
     args = parser.parse_args()
 
-    make_glb = bool(args.glb)
-    glb_path = None if args.glb is True else (args.glb if isinstance(args.glb, str) else None)
-
-    result = run_parse(args.ifc_file, args.output_folder, make_glb=make_glb, glb_path=glb_path, threads=args.threads)
+    result = run_parse(args.ifc_file, args.output_folder, threads=args.threads)
 
     if result['success']:
         s = result['statistics']
-        print(f"\n[SUCCESS] Elements: {s['total_elements']}, Geometry: {s['elements_with_geometry']}")
+        print(f"\n[SUCCESS] Elements: {s['total_elements']}, "
+              f"Geometry: {s['elements_with_geometry']} "
+              f"({s['parametric_elements']} parametric, {s['mesh_elements']} mesh)")
         print(f"Output: {args.output_folder}")
-        if result.get('glb_file'):
-            glb_size = os.path.getsize(result['glb_file']) / (1024 * 1024)
-            print(f"GLB: {result['glb_file']} ({glb_size:.2f} MB)")
 
 
 if __name__ == '__main__':

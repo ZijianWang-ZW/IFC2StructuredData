@@ -1,0 +1,12 @@
+*.ifc
+*.csv
+*.mtl
+*.obj
+*.log
+*.json
+*.pyc
+/test_*
+
+run_all_tests.py
+validate_outputs.py
+memory.md

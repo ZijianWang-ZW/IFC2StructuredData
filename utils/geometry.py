@@ -215,12 +215,12 @@ def build_geometry(
     output_dir: str = '.',
     *,
     num_threads: int = 4
-) -> Tuple[List[str], List[Dict], Dict[str, Any]]:
+) -> Tuple[List[str], Dict[str, Any]]:
     """
-    Extract geometry and write per-element OBJ + MTL files.
+    Tessellate elements and write per-element OBJ + MTL files.
 
-    Uses USE_WORLD_COORDS=True so vertices are already in world coordinates (meters).
-    No instancing, no deduplication — every element gets its own geometry files.
+    Only called for non-parametric elements whose geometry cannot be
+    described parametrically (e.g. FacetedBrep).
 
     Args:
         ifc_model: Loaded IFC model
@@ -229,13 +229,15 @@ def build_geometry(
         num_threads: Number of threads for geometry iterator
 
     Returns:
-        - guids_with_geometry: List[str] of GlobalIds that have geometry
-        - geometry_memory: List[Dict] with keys {GlobalId, vertices, faces, material_groups}
-          for optional GLB pass
+        - guids_with_geometry: List[str] of GlobalIds that produced OBJ files
         - stats: Dict with processing statistics
     """
     if elements is None:
         elements = list(ifc_model.by_type('IfcProduct'))
+
+    if not elements:
+        logger.info("[GEOM] No elements to tessellate")
+        return [], {'processed': 0, 'with_geometry': 0, 'without_geometry': 0, 'errors': 0}
 
     unit_scale = _get_length_unit_scale(ifc_model)
     logger.info(f"[UNITS] Length unit scale: {unit_scale} (to meters)")
@@ -249,7 +251,6 @@ def build_geometry(
     styled_by_item, indexed_colour = build_style_and_colour_indexes(ifc_model)
     logger.info(f"[GEOM] Built color indexes: {len(styled_by_item)} styled items")
 
-    # Initialize iterator with ALL elements
     try:
         it = geom.iterator(
             settings,
@@ -260,13 +261,12 @@ def build_geometry(
         )
         if not it.initialize():
             logger.error("[GEOM] Failed to initialize iterator")
-            return [], [], {}
+            return [], {}
     except Exception as e:
         logger.error(f"[GEOM] Iterator error: {e}")
-        return [], [], {}
+        return [], {}
 
     guids_with_geometry: List[str] = []
-    geometry_memory: List[Dict] = []
     stats = {'processed': 0, 'with_geometry': 0, 'without_geometry': 0, 'errors': 0}
 
     processed = 0
@@ -288,7 +288,6 @@ def build_geometry(
             if processed % LOG_PROGRESS_INTERVAL == 0:
                 logger.info(f"[GEOM] Processed {processed}/{len(elements)} elements...")
 
-            # No geometry
             if not getattr(s, 'geometry', None):
                 stats['without_geometry'] += 1
                 if not it.next():
@@ -296,7 +295,6 @@ def build_geometry(
                 continue
 
             try:
-                # Extract materials
                 try:
                     obj = ifc_model.by_guid(gid)
                 except Exception:
@@ -307,11 +305,9 @@ def build_geometry(
                     for g in groups
                 ]
 
-                # Extract geometry data (already world coords in meters)
                 verts, faces = _extract_geometry_data(s)
 
                 if verts and faces:
-                    # Write OBJ + MTL (use safe filename for case-insensitive FS)
                     safe_name = _safe_filename(gid)
                     obj_path = os.path.join(geom_dir, f"{safe_name}.obj")
                     mtl_path = os.path.join(geom_dir, f"{safe_name}.mtl")
@@ -319,12 +315,6 @@ def build_geometry(
                     _write_mtl_file(mtl_path, material_groups)
 
                     guids_with_geometry.append(gid)
-                    geometry_memory.append({
-                        'GlobalId': gid,
-                        'vertices': verts,
-                        'faces': faces,
-                        'material_groups': material_groups,
-                    })
                     stats['with_geometry'] += 1
                 else:
                     stats['without_geometry'] += 1
@@ -347,4 +337,4 @@ def build_geometry(
     logger.info(f"[GEOM] Complete: {stats['with_geometry']} elements with geometry, "
                 f"{stats['without_geometry']} without, {stats['errors']} errors")
 
-    return guids_with_geometry, geometry_memory, stats
+    return guids_with_geometry, stats
