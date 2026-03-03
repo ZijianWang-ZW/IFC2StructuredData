@@ -2,6 +2,14 @@
 
 Convert IFC (Industry Foundation Classes) building models into structured, portable formats: CSV for attributes, relationships, and **parametric geometry**; OBJ/MTL only for non-parametric mesh elements.
 
+## Repository Split (2026-03-03)
+
+This repository now focuses on IFC parsing only.
+
+Graph ingestion, backend API, and dual-pane viewer code were moved to a separate repository:
+
+- [IFCGraphViewer](https://github.com/ZijianWang-ZW/IFCGraphViewer)
+
 ## Why
 
 IFC files are complex and difficult to work with programmatically. This tool extracts the useful parts into simple, widely-supported formats that can be consumed by any language or tool -- no IFC SDK required downstream.

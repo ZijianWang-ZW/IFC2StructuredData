@@ -3,7 +3,3 @@ numpy
 pandas
 pygltflib
 psutil
-neo4j
-fastapi
-uvicorn
-httpx
