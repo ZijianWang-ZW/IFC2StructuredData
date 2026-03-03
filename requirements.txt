@@ -3,3 +3,4 @@ numpy
 pandas
 pygltflib
 psutil
+neo4j
