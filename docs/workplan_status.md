@@ -10,7 +10,7 @@
 3. Week 3: Done
 4. Week 4: Done
 5. Week 5: Done
-6. Week 6: Pending
+6. Week 6: Done
 
 ## Completed Milestones
 
@@ -43,11 +43,11 @@
 5. Added `CSV` backend mode for no-Neo4j local runs.
 6. Browser smoke test completed with working interactions.
 
-## Immediate Next Work (Week 6)
+## Immediate Next Work (Post Week 6 / V2)
 
-1. Run full acceptance on `example_str` and freeze release checklist.
-2. Produce `runbook`, `limitations_v1`, and V2 backlog docs.
-3. Optional: add automated Playwright smoke script to CI.
+1. Start V2 federation + semantic enrichment track.
+2. Add CI automation for acceptance script + browser smoke.
+3. Expand scalability testing beyond 1000-node target.
 
 ## Week 5 Update (Feedback Batch 1)
 
@@ -78,6 +78,24 @@
    - hidden-class based in-place filtering
    - dynamic filter options from current graph
    - faster layout path for neighborhood vs big-picture scenarios
+
+## Week 6 Update (Acceptance + Docs Closure)
+
+1. Added automated acceptance script:
+   - `scripts/week6_acceptance.py`
+   - report output: `docs/week6_acceptance_report.json`
+2. Completed `example_str` acceptance run (PASS):
+   - dataset + drop-stat checks
+   - dry-run Neo4j import checks
+   - backend API contract checks
+3. Completed browser smoke on `example_str` runtime:
+   - no-viewer-index graceful behavior
+   - manual focus, big-picture, and back-to-focus verified
+4. Delivered Week6 documentation set:
+   - `docs/week6_acceptance.md`
+   - `docs/runbook.md`
+   - `docs/limitations_v1.md`
+   - `docs/backlog_v2.md`
 
 ## Environment Requirements Before Continue
 

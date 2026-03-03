@@ -339,6 +339,20 @@ utils/
 └── color.py             # Material color resolution
 ```
 
+## Delivery Docs
+
+1. Product/architecture: [docs/PRD_graph_bim_platform.md](docs/PRD_graph_bim_platform.md)
+2. Week 6 acceptance summary: [docs/week6_acceptance.md](docs/week6_acceptance.md)
+3. Operations guide: [docs/runbook.md](docs/runbook.md)
+4. V1 constraints: [docs/limitations_v1.md](docs/limitations_v1.md)
+5. V2 planning: [docs/backlog_v2.md](docs/backlog_v2.md)
+
+Generate Week6 acceptance JSON report with:
+
+```bash
+python scripts/week6_acceptance.py --output-dir example_str --report-path docs/week6_acceptance_report.json
+```
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
