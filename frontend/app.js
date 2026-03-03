@@ -3,6 +3,21 @@ import { OrbitControls } from 'https://esm.sh/three@0.161.0/examples/jsm/control
 import { GLTFLoader } from 'https://esm.sh/three@0.161.0/examples/jsm/loaders/GLTFLoader.js';
 import cytoscape from 'https://esm.sh/cytoscape@3.29.2';
 
+const GRAPH_CONTROL_IDS = [
+  'hopsSelect',
+  'btnBigPicture',
+  'btnBackToFocus',
+  'globalIdInput',
+  'btnFocus',
+  'objectTypeFilter',
+  'relationshipFilter',
+  'toggleGeometry',
+  'toggleLabels',
+  'btnResetFilters',
+];
+
+const CAMERA_CONTROL_IDS = ['btnCamFit', 'btnCamIso', 'btnCamTop', 'btnCamFront'];
+
 const state = {
   viewerModelUrl: '/viewer-files/model.glb',
   selectedGlobalId: null,
@@ -16,6 +31,14 @@ const state = {
   graphMode: 'none',
   currentCenterGlobalId: null,
   currentHops: 1,
+  lastLocalView: null,
+  filters: {
+    objectType: 'ALL',
+    relationshipType: 'ALL',
+    showGeometry: true,
+    showLabels: true,
+  },
+  graphBusyCount: 0,
   lastNodeTapAt: 0,
   lastNodeTapId: null,
   cy: null,
@@ -30,9 +53,37 @@ const state = {
   selectedMesh: null,
 };
 
+function setStatus(id, text, error = false) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('error', Boolean(error));
+}
+
 function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
+}
+
+function setControlsDisabled(ids, disabled) {
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = disabled;
+  }
+}
+
+function beginGraphBusy(message) {
+  state.graphBusyCount += 1;
+  setControlsDisabled(GRAPH_CONTROL_IDS, true);
+  if (message) setStatus('graphStatus', message);
+}
+
+function endGraphBusy() {
+  state.graphBusyCount = Math.max(0, state.graphBusyCount - 1);
+  if (state.graphBusyCount === 0) {
+    setControlsDisabled(GRAPH_CONTROL_IDS, false);
+    updateBackButtonState();
+  }
 }
 
 function stringifyForInspector(value) {
@@ -60,6 +111,25 @@ async function fetchJson(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(`${url} -> ${r.status}`);
   return r.json();
+}
+
+async function runGraphTask(message, task) {
+  beginGraphBusy(message);
+  try {
+    return await task();
+  } catch (err) {
+    setStatus('graphStatus', `Graph error: ${err.message || err}`, true);
+    setInspector('Graph Error', { message: String(err) });
+    throw err;
+  } finally {
+    endGraphBusy();
+  }
+}
+
+function runUiTask(task) {
+  task().catch((err) => {
+    console.error(err);
+  });
 }
 
 async function loadConfig() {
@@ -121,18 +191,45 @@ function initThree() {
   animate();
 }
 
-function focusCameraToObject(obj) {
-  if (!obj || !state.camera || !state.controls) return;
-  const box = new THREE.Box3().setFromObject(obj);
+function getFocusObject() {
+  if (state.selectedGlobalId) {
+    const selected = state.objectMap.get(state.selectedGlobalId);
+    if (selected) return selected;
+  }
+  return state.loadedRoot || null;
+}
+
+function moveCameraToBox(box, preset = 'iso') {
+  if (!state.camera || !state.controls) return;
   if (!isFinite(box.min.x)) return;
   const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3()).length();
-  const dist = Math.max(5, size * 1.2);
+  const sizeVec = box.getSize(new THREE.Vector3());
+  const radius = Math.max(sizeVec.length(), 1);
+  const dist = Math.max(5, radius * 0.9);
 
-  const direction = new THREE.Vector3(1, 1, 1).normalize();
+  let direction;
+  if (preset === 'top') direction = new THREE.Vector3(0.05, 1, 0.05);
+  else if (preset === 'front') direction = new THREE.Vector3(0.05, 0.2, 1);
+  else if (preset === 'fit') direction = new THREE.Vector3(0.8, 0.7, 0.8);
+  else direction = new THREE.Vector3(1, 1, 1);
+
+  direction.normalize();
   state.camera.position.copy(center.clone().add(direction.multiplyScalar(dist)));
   state.controls.target.copy(center);
   state.controls.update();
+}
+
+function applyCameraPreset(preset) {
+  const targetObj = getFocusObject();
+  if (!targetObj) return;
+  const box = new THREE.Box3().setFromObject(targetObj);
+  moveCameraToBox(box, preset);
+}
+
+function focusCameraToObject(obj) {
+  if (!obj) return;
+  const box = new THREE.Box3().setFromObject(obj);
+  moveCameraToBox(box, 'iso');
 }
 
 function setViewerSelection(globalId) {
@@ -144,23 +241,24 @@ function setViewerSelection(globalId) {
   if (!globalId) return;
   const rootObj = state.objectMap.get(globalId);
   if (!rootObj) return;
-  let obj = rootObj;
-  if (!obj.isMesh) {
+
+  let mesh = rootObj;
+  if (!mesh.isMesh) {
     let firstMesh = null;
     rootObj.traverse((child) => {
       if (!firstMesh && child.isMesh) firstMesh = child;
     });
     if (!firstMesh) return;
-    obj = firstMesh;
+    mesh = firstMesh;
   }
 
-  if (!obj.userData.__originalMaterial) {
-    obj.userData.__originalMaterial = obj.material;
+  if (!mesh.userData.__originalMaterial) {
+    mesh.userData.__originalMaterial = mesh.material;
   }
 
-  const mat = Array.isArray(obj.material)
-    ? obj.material.map((m) => m.clone())
-    : obj.material.clone();
+  const mat = Array.isArray(mesh.material)
+    ? mesh.material.map((m) => m.clone())
+    : mesh.material.clone();
 
   const applyHighlight = (m) => {
     if ('emissive' in m) m.emissive.set(0x0066ff);
@@ -170,8 +268,8 @@ function setViewerSelection(globalId) {
   if (Array.isArray(mat)) mat.forEach(applyHighlight);
   else applyHighlight(mat);
 
-  obj.material = mat;
-  state.selectedMesh = obj;
+  mesh.material = mat;
+  state.selectedMesh = mesh;
   focusCameraToObject(rootObj);
 }
 
@@ -194,33 +292,42 @@ function onViewerClick(event) {
   const intersects = state.raycaster.intersectObjects(state.scene.children, true);
   if (!intersects.length) return;
   const gid = findGlobalIdFromIntersection(intersects[0].object);
-  if (gid) selectObject(gid, 'viewer');
+  if (gid) runUiTask(() => selectObject(gid, 'viewer'));
 }
 
 async function loadViewerModel() {
-  setText('viewerStatus', `Viewer: loading ${state.viewerModelUrl}`);
+  setStatus('viewerStatus', `Viewer: loading ${state.viewerModelUrl}`);
+  setControlsDisabled(CAMERA_CONTROL_IDS, true);
   const loader = new GLTFLoader();
+
   return new Promise((resolve, reject) => {
     loader.load(
       state.viewerModelUrl,
       (gltf) => {
-        if (state.loadedRoot) state.scene.remove(state.loadedRoot);
-        state.loadedRoot = gltf.scene;
-        state.scene.add(gltf.scene);
+        try {
+          if (state.loadedRoot) state.scene.remove(state.loadedRoot);
+          state.loadedRoot = gltf.scene;
+          state.scene.add(gltf.scene);
 
-        state.objectMap.clear();
-        gltf.scene.traverse((obj) => {
-          if (obj.name && state.viewerIndex[obj.name]) {
-            state.objectMap.set(obj.name, obj);
-          }
-        });
-
-        setText('viewerStatus', `Viewer: mapped ${state.objectMap.size} objects`);
-        resolve();
+          state.objectMap.clear();
+          gltf.scene.traverse((obj) => {
+            if (obj.name && state.viewerIndex[obj.name]) {
+              state.objectMap.set(obj.name, obj);
+            }
+          });
+          setStatus('viewerStatus', `Viewer: mapped ${state.objectMap.size} objects`);
+          setControlsDisabled(CAMERA_CONTROL_IDS, false);
+          resolve();
+        } catch (err) {
+          setStatus('viewerStatus', `Viewer map failed: ${err.message || err}`, true);
+          setControlsDisabled(CAMERA_CONTROL_IDS, false);
+          reject(err);
+        }
       },
       undefined,
       (err) => {
-        setText('viewerStatus', `Viewer load failed: ${err.message || err}`);
+        setStatus('viewerStatus', `Viewer load failed: ${err.message || err}`, true);
+        setControlsDisabled(CAMERA_CONTROL_IDS, false);
         reject(err);
       }
     );
@@ -294,32 +401,40 @@ function initGraph() {
           'target-arrow-color': '#2563eb',
         },
       },
+      {
+        selector: '.hidden',
+        style: {
+          display: 'none',
+        },
+      },
     ],
     layout: { name: 'grid' },
   });
 
-  state.cy.on('tap', 'node', async (evt) => {
-    const node = evt.target;
-    const type = node.data('type');
-    const now = Date.now();
-    const isDoubleTap = state.lastNodeTapId === node.id() && now - state.lastNodeTapAt < 350;
-    state.lastNodeTapAt = now;
-    state.lastNodeTapId = node.id();
+  state.cy.on('tap', 'node', (evt) => {
+    runUiTask(async () => {
+      const node = evt.target;
+      const type = node.data('type');
+      const now = Date.now();
+      const isDoubleTap = state.lastNodeTapId === node.id() && now - state.lastNodeTapAt < 350;
+      state.lastNodeTapAt = now;
+      state.lastNodeTapId = node.id();
 
-    if (type === 'building') {
-      const gid = node.data('globalId');
-      await selectObject(gid, 'graph');
-      if (isDoubleTap) {
-        await expandNeighborhood(gid);
+      if (type === 'building') {
+        const gid = node.data('globalId');
+        await selectObject(gid, 'graph');
+        if (isDoubleTap) {
+          await expandNeighborhood(gid);
+        }
+        return;
       }
-      return;
-    }
 
-    if (type === 'geometry') {
-      const defId = Number(node.data('definitionId'));
-      highlightGeometryInstances(defId);
-      await showGeometryDetails(defId);
-    }
+      if (type === 'geometry') {
+        const defId = Number(node.data('definitionId'));
+        highlightGeometryInstances(defId);
+        await showGeometryDetails(defId);
+      }
+    });
   });
 
   state.cy.on('tap', 'edge', (evt) => {
@@ -333,6 +448,33 @@ function initGraph() {
       clearEdgeSelection();
     }
   });
+}
+
+function updateBackButtonState() {
+  const btn = document.getElementById('btnBackToFocus');
+  if (!btn) return;
+  btn.disabled = state.graphBusyCount > 0 || !state.lastLocalView;
+}
+
+function updateSelectOptions(selectId, values, allLabel) {
+  const select = document.getElementById(selectId);
+  if (!select) return;
+  const previous = select.value || 'ALL';
+  const sorted = Array.from(values).filter(Boolean).sort((a, b) => String(a).localeCompare(String(b)));
+
+  const frag = document.createDocumentFragment();
+  const allOpt = document.createElement('option');
+  allOpt.value = 'ALL';
+  allOpt.textContent = allLabel;
+  frag.appendChild(allOpt);
+  for (const value of sorted) {
+    const opt = document.createElement('option');
+    opt.value = String(value);
+    opt.textContent = String(value);
+    frag.appendChild(opt);
+  }
+  select.replaceChildren(frag);
+  select.value = sorted.includes(previous) ? previous : 'ALL';
 }
 
 function graphElementsFromData(payload, { resetMaps = true } = {}) {
@@ -349,17 +491,18 @@ function graphElementsFromData(payload, { resetMaps = true } = {}) {
   }
 
   for (const o of buildingNodes) {
-    state.objectTypeMap[o.GlobalId] = o.ifcType || '-';
+    const ifcType = o.ifcType || 'Unknown';
+    state.objectTypeMap[o.GlobalId] = ifcType;
     const label = denseMode
-      ? `${o.ifcType || 'Object'}`
-      : `${o.ifcType || 'Object'}\n${String(o.GlobalId).slice(-8)}`;
+      ? `${ifcType}`
+      : `${ifcType}\n${String(o.GlobalId).slice(-8)}`;
     elements.push({
       data: {
         id: `obj:${o.GlobalId}`,
         type: 'building',
         label,
         globalId: o.GlobalId,
-        ifcType: o.ifcType || null,
+        ifcType,
       },
     });
   }
@@ -432,7 +575,7 @@ function runLayout(mode, focusGlobalId = null) {
       name: 'grid',
       animate: false,
       fit: true,
-      padding: 24,
+      padding: 20,
       avoidOverlap: true,
     }).run();
     return;
@@ -444,10 +587,10 @@ function runLayout(mode, focusGlobalId = null) {
       animate: false,
       fit: false,
       padding: 20,
-      numIter: 120,
+      numIter: 100,
       randomize: false,
       idealEdgeLength: 80,
-      nodeRepulsion: 250000,
+      nodeRepulsion: 200000,
     }).run();
     return;
   }
@@ -458,10 +601,104 @@ function runLayout(mode, focusGlobalId = null) {
     directed: false,
     spacingFactor: 1.05,
     fit: true,
-    padding: 24,
+    padding: 22,
     roots,
     animate: false,
   }).run();
+}
+
+function updateFilterOptionsFromGraph() {
+  if (!state.cy) return;
+  const objectTypes = new Set();
+  const relTypes = new Set(['USES_GEOMETRY']);
+  state.cy.nodes('[type = "building"]').forEach((node) => {
+    objectTypes.add(node.data('ifcType') || 'Unknown');
+  });
+  state.cy.edges('[type = "relates"]').forEach((edge) => {
+    relTypes.add(edge.data('relationshipType') || 'RELATES_TO');
+  });
+  updateSelectOptions('objectTypeFilter', objectTypes, 'All Types');
+  updateSelectOptions('relationshipFilter', relTypes, 'All Relations');
+}
+
+function refreshFilterStateFromControls() {
+  const objectType = document.getElementById('objectTypeFilter')?.value || 'ALL';
+  const relationshipType = document.getElementById('relationshipFilter')?.value || 'ALL';
+  const showGeometry = Boolean(document.getElementById('toggleGeometry')?.checked);
+  const showLabels = Boolean(document.getElementById('toggleLabels')?.checked);
+  state.filters = { objectType, relationshipType, showGeometry, showLabels };
+}
+
+function applyGraphFilters() {
+  if (!state.cy) return;
+  refreshFilterStateFromControls();
+
+  const { objectType, relationshipType, showGeometry, showLabels } = state.filters;
+
+  state.cy.style()
+    .selector('node[type = "building"]')
+    .style('label', showLabels ? 'data(label)' : '')
+    .selector('node[type = "geometry"]')
+    .style('label', showLabels ? 'data(label)' : '')
+    .update();
+
+  state.cy.startBatch();
+  state.cy.elements().removeClass('hidden');
+
+  const buildingNodes = state.cy.nodes('[type = "building"]');
+  const geometryNodes = state.cy.nodes('[type = "geometry"]');
+  const edges = state.cy.edges();
+
+  if (objectType !== 'ALL') {
+    buildingNodes.forEach((node) => {
+      if ((node.data('ifcType') || 'Unknown') !== objectType) {
+        node.addClass('hidden');
+      }
+    });
+  }
+
+  if (!showGeometry) {
+    geometryNodes.addClass('hidden');
+  }
+
+  edges.forEach((edge) => {
+    let hide = false;
+    const type = edge.data('type');
+    const relType = edge.data('relationshipType') || 'RELATES_TO';
+
+    if (relationshipType !== 'ALL' && relType !== relationshipType) {
+      hide = true;
+    }
+    if (!showGeometry && type === 'uses') {
+      hide = true;
+    }
+    if (edge.source().hasClass('hidden') || edge.target().hasClass('hidden')) {
+      hide = true;
+    }
+    if (hide) edge.addClass('hidden');
+  });
+
+  if (showGeometry) {
+    geometryNodes.forEach((node) => {
+      if (node.hasClass('hidden')) return;
+      const connectedUses = node.connectedEdges('[type = "uses"]').filter((edge) => !edge.hasClass('hidden'));
+      if (connectedUses.length === 0) {
+        node.addClass('hidden');
+      }
+    });
+  }
+
+  edges.forEach((edge) => {
+    if (edge.source().hasClass('hidden') || edge.target().hasClass('hidden')) {
+      edge.addClass('hidden');
+    }
+  });
+
+  state.cy.endBatch();
+
+  const visibleNodeCount = state.cy.nodes().filter((n) => !n.hasClass('hidden')).length;
+  const visibleEdgeCount = state.cy.edges().filter((e) => !e.hasClass('hidden')).length;
+  setStatus('graphStatus', `Graph view: ${visibleNodeCount} nodes, ${visibleEdgeCount} edges`);
 }
 
 function replaceGraph(elements, mode, focusGlobalId = null) {
@@ -471,6 +708,8 @@ function replaceGraph(elements, mode, focusGlobalId = null) {
   state.cy.endBatch();
   runLayout(mode, focusGlobalId);
   clearEdgeSelection();
+  updateFilterOptionsFromGraph();
+  applyGraphFilters();
 }
 
 async function refreshNeighborhood(globalId, { force = false } = {}) {
@@ -484,51 +723,84 @@ async function refreshNeighborhood(globalId, { force = false } = {}) {
     return;
   }
 
-  const payload = await getNeighborhoodPayload(globalId, hops, 500);
-  const elements = graphElementsFromData(payload, { resetMaps: true });
-  replaceGraph(elements, 'neighborhood', globalId);
-  state.graphMode = 'neighborhood';
-  state.currentCenterGlobalId = globalId;
-  state.currentHops = hops;
-  setText(
-    'graphStatus',
-    `Graph: ${payload.nodes.buildingObjects.length} objects, ${payload.edges.relatesTo.length} relations`
-  );
+  await runGraphTask('Graph: loading neighborhood...', async () => {
+    const payload = await getNeighborhoodPayload(globalId, hops, 500);
+    const elements = graphElementsFromData(payload, { resetMaps: true });
+    if (!elements.length) {
+      replaceGraph([], 'neighborhood', globalId);
+      setStatus('graphStatus', 'Graph: empty neighborhood result');
+      return;
+    }
+
+    replaceGraph(elements, 'neighborhood', globalId);
+    state.graphMode = 'neighborhood';
+    state.currentCenterGlobalId = globalId;
+    state.currentHops = hops;
+    state.lastLocalView = { globalId, hops };
+    updateBackButtonState();
+    setStatus(
+      'graphStatus',
+      `Graph: ${payload.nodes.buildingObjects.length} objects, ${payload.edges.relatesTo.length} relations`
+    );
+  });
 }
 
 async function expandNeighborhood(globalId) {
-  const hops = getCurrentHops();
-  const payload = await getNeighborhoodPayload(globalId, hops, 500);
-  const incoming = graphElementsFromData(payload, { resetMaps: false });
-  const existingIds = new Set(state.cy.elements().map((el) => el.id()));
-  const toAdd = incoming.filter((el) => !existingIds.has(el.data.id));
+  await runGraphTask('Graph: expanding...', async () => {
+    const hops = getCurrentHops();
+    const expandHops = Math.min(2, hops + 1);
+    const payload = await getNeighborhoodPayload(globalId, expandHops, 800);
+    const incoming = graphElementsFromData(payload, { resetMaps: false });
+    const existingIds = new Set(state.cy.elements().map((el) => el.id()));
+    const toAdd = incoming.filter((el) => !existingIds.has(el.data.id));
 
-  if (!toAdd.length) {
-    setText('graphStatus', 'Graph: no new nodes to expand');
-    return;
-  }
+    if (!toAdd.length) {
+      setStatus('graphStatus', 'Graph: no new nodes to expand');
+      return;
+    }
 
-  state.cy.startBatch();
-  state.cy.add(toAdd);
-  state.cy.endBatch();
-  runLayout('expand', globalId);
-  markGraphSelection(globalId);
-  setText(
-    'graphStatus',
-    `Graph expanded: +${toAdd.length} elements, now ${state.cy.nodes().length} nodes / ${state.cy.edges().length} edges`
-  );
+    state.cy.startBatch();
+    state.cy.add(toAdd);
+    state.cy.endBatch();
+    updateFilterOptionsFromGraph();
+    runLayout('expand', globalId);
+    applyGraphFilters();
+    markGraphSelection(globalId);
+    setStatus(
+      'graphStatus',
+      `Graph expanded(${expandHops}-hop): +${toAdd.length} elements, now ${state.cy.nodes().length} nodes / ${state.cy.edges().length} edges`
+    );
+  });
 }
 
 async function showBigPicture() {
-  const payload = await getFullGraphPayload(1000);
-  const elements = graphElementsFromData(payload, { resetMaps: true });
-  replaceGraph(elements, 'big');
-  state.graphMode = 'big';
-  state.currentCenterGlobalId = null;
-  setText('graphStatus', `Graph(big): ${payload.nodes.buildingObjects.length} objects, ${payload.edges.relatesTo.length} relations`);
+  await runGraphTask('Graph: loading big picture...', async () => {
+    if (state.currentCenterGlobalId) {
+      state.lastLocalView = {
+        globalId: state.currentCenterGlobalId,
+        hops: state.currentHops,
+      };
+    }
+    const payload = await getFullGraphPayload(1000);
+    const elements = graphElementsFromData(payload, { resetMaps: true });
+    replaceGraph(elements, 'big');
+    state.graphMode = 'big';
+    state.currentCenterGlobalId = null;
+    updateBackButtonState();
+    setStatus('graphStatus', `Graph(big): ${payload.nodes.buildingObjects.length} objects, ${payload.edges.relatesTo.length} relations`);
+  });
+}
+
+async function backToFocusView() {
+  if (!state.lastLocalView) return;
+  const hopsSelect = document.getElementById('hopsSelect');
+  if (hopsSelect) hopsSelect.value = String(state.lastLocalView.hops);
+  await refreshNeighborhood(state.lastLocalView.globalId, { force: true });
+  markGraphSelection(state.lastLocalView.globalId);
 }
 
 function markGraphSelection(globalId) {
+  if (!state.cy) return;
   state.cy.nodes().removeClass('selected');
   if (!globalId) return;
   const node = state.cy.getElementById(`obj:${globalId}`);
@@ -539,17 +811,19 @@ function markGraphSelection(globalId) {
 }
 
 function clearEdgeSelection() {
+  if (!state.cy) return;
   state.cy.edges().removeClass('selected-edge');
 }
 
 function markEdgeSelection(edgeId) {
+  if (!state.cy) return;
   clearEdgeSelection();
   const edge = state.cy.getElementById(edgeId);
   if (edge && edge.length) edge.addClass('selected-edge');
 }
 
 function highlightGeometryInstances(definitionId) {
-  if (!definitionId) return;
+  if (!definitionId || !state.cy) return;
   clearEdgeSelection();
   const edges = state.cy
     .edges()
@@ -585,6 +859,7 @@ async function showBuildingDetails(globalId) {
       definitionId: edge.definitionId,
       instanceParamsJson: edge.instanceParamsJson || null,
     }));
+
     setInspector('Building Node Attributes', {
       nodeType: 'building',
       GlobalId: object.GlobalId || globalId,
@@ -666,9 +941,66 @@ async function loadOverview() {
   }
 }
 
+function bindControls() {
+  document.getElementById('btnFocus')?.addEventListener('click', () => {
+    runUiTask(async () => {
+      const gid = document.getElementById('globalIdInput')?.value.trim();
+      if (!gid) return;
+      await selectObject(gid, 'api');
+    });
+  });
+
+  document.getElementById('btnBigPicture')?.addEventListener('click', () => {
+    runUiTask(async () => {
+      await showBigPicture();
+    });
+  });
+
+  document.getElementById('btnBackToFocus')?.addEventListener('click', () => {
+    runUiTask(async () => {
+      await backToFocusView();
+    });
+  });
+
+  document.getElementById('hopsSelect')?.addEventListener('change', () => {
+    runUiTask(async () => {
+      if (state.selectedGlobalId) {
+        await refreshNeighborhood(state.selectedGlobalId, { force: true });
+        markGraphSelection(state.selectedGlobalId);
+      }
+    });
+  });
+
+  const filterIds = ['objectTypeFilter', 'relationshipFilter', 'toggleGeometry', 'toggleLabels'];
+  for (const id of filterIds) {
+    document.getElementById(id)?.addEventListener('change', () => {
+      applyGraphFilters();
+    });
+  }
+
+  document.getElementById('btnResetFilters')?.addEventListener('click', () => {
+    const objectType = document.getElementById('objectTypeFilter');
+    const relationship = document.getElementById('relationshipFilter');
+    const toggleGeometry = document.getElementById('toggleGeometry');
+    const toggleLabels = document.getElementById('toggleLabels');
+    if (objectType) objectType.value = 'ALL';
+    if (relationship) relationship.value = 'ALL';
+    if (toggleGeometry) toggleGeometry.checked = true;
+    if (toggleLabels) toggleLabels.checked = true;
+    applyGraphFilters();
+  });
+
+  document.getElementById('btnCamFit')?.addEventListener('click', () => applyCameraPreset('fit'));
+  document.getElementById('btnCamIso')?.addEventListener('click', () => applyCameraPreset('iso'));
+  document.getElementById('btnCamTop')?.addEventListener('click', () => applyCameraPreset('top'));
+  document.getElementById('btnCamFront')?.addEventListener('click', () => applyCameraPreset('front'));
+}
+
 async function init() {
   initThree();
   initGraph();
+  bindControls();
+  updateBackButtonState();
   await loadConfig();
 
   try {
@@ -676,6 +1008,7 @@ async function init() {
   } catch (err) {
     state.viewerIndex = {};
     console.warn('viewer index load failed', err);
+    setStatus('viewerStatus', `Viewer index failed: ${err.message || err}`, true);
   }
 
   await loadViewerModel();
@@ -683,36 +1016,27 @@ async function init() {
 
   const preferred = Object.keys(state.viewerIndex)[0] || null;
   if (preferred) {
-    document.getElementById('globalIdInput').value = preferred;
+    const input = document.getElementById('globalIdInput');
+    if (input) input.value = preferred;
     await selectObject(preferred, 'api');
+  } else {
+    setStatus('graphStatus', 'Graph: no viewer index data available', true);
   }
-
-  document.getElementById('btnFocus').addEventListener('click', async () => {
-    const gid = document.getElementById('globalIdInput').value.trim();
-    if (gid) await selectObject(gid, 'api');
-  });
-
-  document.getElementById('btnBigPicture').addEventListener('click', async () => {
-    await showBigPicture();
-  });
-
-  document.getElementById('hopsSelect').addEventListener('change', async () => {
-    if (state.selectedGlobalId) {
-      await refreshNeighborhood(state.selectedGlobalId, { force: true });
-      markGraphSelection(state.selectedGlobalId);
-    }
-  });
 
   window.ifcApp = {
     selectObject,
     showBigPicture,
     refreshNeighborhood,
     expandNeighborhood,
+    backToFocusView,
+    applyGraphFilters,
+    applyCameraPreset,
     state,
   };
 }
 
 init().catch((err) => {
   console.error(err);
-  setText('viewerStatus', `Startup failed: ${err.message || err}`);
+  setStatus('viewerStatus', `Startup failed: ${err.message || err}`, true);
+  setStatus('graphStatus', `Startup failed: ${err.message || err}`, true);
 });

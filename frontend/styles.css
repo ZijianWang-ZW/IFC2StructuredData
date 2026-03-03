@@ -4,6 +4,7 @@
   --text: #1f2937;
   --muted: #6b7280;
   --line: #d1d5db;
+  --warn: #b42318;
 }
 
 * { box-sizing: border-box; }
@@ -31,6 +32,9 @@ body { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
 }
 .actions button { cursor: pointer; background: #ecf4ff; border-color: #b6d4fe; }
 .actions button:hover { background: #ddeeff; }
+.actions button[disabled] { opacity: 0.5; cursor: default; }
+.checkWrap { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.checkWrap input { margin: 0; width: 14px; height: 14px; }
 
 .layout {
   display: grid;
@@ -99,6 +103,10 @@ body { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
   color: var(--muted);
   padding: 6px 10px;
   font-size: 13px;
+}
+
+.status.error {
+  color: var(--warn);
 }
 
 .infoBar {

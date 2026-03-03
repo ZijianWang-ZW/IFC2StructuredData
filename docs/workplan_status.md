@@ -9,7 +9,7 @@
 2. Week 2: Done
 3. Week 3: Done
 4. Week 4: Done
-5. Week 5: In Progress
+5. Week 5: Done
 6. Week 6: Pending
 
 ## Completed Milestones
@@ -43,10 +43,10 @@
 5. Added `CSV` backend mode for no-Neo4j local runs.
 6. Browser smoke test completed with working interactions.
 
-## Immediate Next Work (Week 5)
+## Immediate Next Work (Week 6)
 
-1. Week 5 interaction refinement (filters, better big-picture controls, graph readability).
-2. Week 5 frontend robustness (error states, loading states, camera reset presets).
+1. Run full acceptance on `example_str` and freeze release checklist.
+2. Produce `runbook`, `limitations_v1`, and V2 backlog docs.
 3. Optional: add automated Playwright smoke script to CI.
 
 ## Week 5 Update (Feedback Batch 1)
@@ -58,6 +58,26 @@
    - frontend request/result caching
    - faster layout defaults + viewport performance flags
 4. Updated viewer asset pipeline to exclude `IfcOpeningElement` from exported GLB.
+
+## Week 5 Update (Interaction + Stability Batch 2)
+
+1. Added graph filters:
+   - object type filter
+   - relationship type filter
+   - geometry node visibility toggle
+   - label visibility toggle
+2. Added big-picture navigation control:
+   - `Back To Focus` to restore last local neighborhood context
+3. Added camera presets:
+   - `Fit`, `Iso`, `Top`, `Front`
+4. Added frontend robustness:
+   - busy/disabled states during graph data loads
+   - explicit graph/viewer error messages
+   - empty-data handling and safer async task guards
+5. Improved graph readability and responsiveness:
+   - hidden-class based in-place filtering
+   - dynamic filter options from current graph
+   - faster layout path for neighborhood vs big-picture scenarios
 
 ## Environment Requirements Before Continue
 

@@ -56,3 +56,15 @@
    - Geometry node attributes loaded via `/api/geometry/{definition_id}`.
    - Edge click shows `edgeName` + `relationshipType`.
    - Double-click expansion increased graph from `20` nodes to `182` nodes in smoke run.
+
+## Week 5 Follow-up Optimizations
+
+1. Added production-style controls for filters (`Type`, `Rel`, geometry/label toggles).
+2. Added `Back To Focus` to restore local view after big-picture exploration.
+3. Added viewer camera presets (`Fit`, `Iso`, `Top`, `Front`).
+4. Added loading/error guarded states to improve interaction stability.
+5. Re-validated with browser smoke:
+   - big picture: ~139ms
+   - back to focus: ~12ms
+   - filtered big graph (`IfcSpace`): visible nodes reduced from `868` to `39`
+   - expansion sample: `+164` nodes in one expansion flow

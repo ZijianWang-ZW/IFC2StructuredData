@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IFC Graph Viewer</title>
+  <link rel="icon" href="data:," />
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
@@ -16,8 +17,24 @@
         <option value="2">2-hop</option>
       </select>
       <button id="btnBigPicture">Big Picture</button>
+      <button id="btnBackToFocus" disabled>Back To Focus</button>
       <input id="globalIdInput" placeholder="GlobalId" />
       <button id="btnFocus">Focus</button>
+      <label for="objectTypeFilter">Type</label>
+      <select id="objectTypeFilter">
+        <option value="ALL">All Types</option>
+      </select>
+      <label for="relationshipFilter">Rel</label>
+      <select id="relationshipFilter">
+        <option value="ALL">All Relations</option>
+      </select>
+      <label class="checkWrap"><input id="toggleGeometry" type="checkbox" checked />Geometry</label>
+      <label class="checkWrap"><input id="toggleLabels" type="checkbox" checked />Labels</label>
+      <button id="btnResetFilters">Reset Filters</button>
+      <button id="btnCamFit">Fit</button>
+      <button id="btnCamIso">Iso</button>
+      <button id="btnCamTop">Top</button>
+      <button id="btnCamFront">Front</button>
     </div>
   </header>
 
