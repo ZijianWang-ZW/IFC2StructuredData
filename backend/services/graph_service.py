@@ -1,0 +1,65 @@
+"""Application-level graph API service."""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+from backend.errors import EntityNotFoundError
+from .base_store import GraphStore
+from .viewer_index import ViewerIndexRepository
+
+
+class GraphService:
+    def __init__(self, *, store: GraphStore, viewer_index_repo: ViewerIndexRepository) -> None:
+        self.store = store
+        self.viewer_index_repo = viewer_index_repo
+
+    def close(self) -> None:
+        self.store.close()
+
+    def get_object_detail(self, global_id: str) -> Dict[str, Any]:
+        node = self.store.get_building_object(global_id)
+        if node is None:
+            raise EntityNotFoundError(f"BuildingObject not found: {global_id}")
+        geometry = self.store.get_geometry_for_objects([global_id])
+        return {
+            "object": node,
+            "geometry": geometry,
+            "viewer": self.viewer_index_repo.get(global_id),
+        }
+
+    def get_neighborhood(self, global_id: str, *, hops: int, limit: int) -> Dict[str, Any]:
+        center = self.store.get_building_object(global_id)
+        if center is None:
+            raise EntityNotFoundError(f"BuildingObject not found: {global_id}")
+
+        object_ids = self.store.get_neighborhood_object_ids(global_id, hops, limit)
+        if global_id not in object_ids:
+            object_ids.append(global_id)
+
+        building_nodes = self.store.get_building_objects(object_ids)
+        relates_edges = self.store.get_relates_edges(object_ids)
+        geometry = self.store.get_geometry_for_objects(object_ids)
+
+        return {
+            "centerGlobalId": global_id,
+            "hops": hops,
+            "limit": limit,
+            "nodes": {
+                "buildingObjects": building_nodes,
+                "geometryDefinitions": geometry["geometry_nodes"],
+            },
+            "edges": {
+                "relatesTo": relates_edges,
+                "usesGeometry": geometry["uses_geometry_edges"],
+            },
+        }
+
+    def get_overview(self) -> Dict[str, Any]:
+        overview = self.store.get_overview()
+        overview["viewer_index_count"] = len(self.viewer_index_repo.get_all())
+        return overview
+
+    def get_viewer_index(self) -> Dict[str, Dict[str, Any]]:
+        return self.viewer_index_repo.get_all()
+
