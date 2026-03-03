@@ -27,7 +27,7 @@ class FakeGraphStore(GraphStore):
             {"src": "B", "dst": "C", "relationshipType": "IfcRelConnectsPathElements"},
         ]
         self.geometry_nodes = {
-            1: {"definitionId": 1, "method": "extrusion"},
+            1: {"definitionId": 1, "method": "extrusion", "geometryTreeJson": '{"type":"IfcExtrudedAreaSolid"}'},
         }
         self.uses = [
             {"src": "A", "definitionId": 1, "instanceParamsJson": '{"position":{}}'},
@@ -70,6 +70,9 @@ class FakeGraphStore(GraphStore):
             "uses_geometry_edges": len(self.uses),
             "relationship_type_counts": [{"relationshipType": "IfcRelAggregates", "count": 1}],
         }
+
+    def get_geometry_definition(self, definition_id: int) -> Dict[str, Any] | None:
+        return self.geometry_nodes.get(definition_id)
 
     def get_all_object_ids(self, limit: int) -> List[str]:
         return sorted(self.objects.keys())[:limit]
@@ -133,6 +136,17 @@ class TestBackendAPI(unittest.TestCase):
         self.assertEqual(data["centerGlobalId"], "A")
         self.assertGreaterEqual(len(data["nodes"]["buildingObjects"]), 2)
         self.assertGreaterEqual(len(data["edges"]["relatesTo"]), 1)
+        self.assertIn("hasGeometryTree", data["nodes"]["geometryDefinitions"][0])
+        self.assertNotIn("geometryTreeJson", data["nodes"]["geometryDefinitions"][0])
+
+    def test_geometry_detail(self) -> None:
+        r = self.client.get("/api/geometry/1")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["geometry"]["definitionId"], 1)
+
+    def test_geometry_not_found(self) -> None:
+        r = self.client.get("/api/geometry/999")
+        self.assertEqual(r.status_code, 404)
 
     def test_overview(self) -> None:
         r = self.client.get("/api/graph/overview")

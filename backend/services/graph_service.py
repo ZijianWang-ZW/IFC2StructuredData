@@ -28,6 +28,23 @@ class GraphService:
             "viewer": self.viewer_index_repo.get(global_id),
         }
 
+    @staticmethod
+    def _compact_geometry_nodes(nodes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        compact_nodes: List[Dict[str, Any]] = []
+        for node in nodes:
+            out = dict(node)
+            tree = out.pop("geometryTreeJson", None)
+            out["hasGeometryTree"] = bool(tree)
+            out["geometryTreeLength"] = len(tree) if isinstance(tree, str) else 0
+            compact_nodes.append(out)
+        return compact_nodes
+
+    def get_geometry_detail(self, definition_id: int) -> Dict[str, Any]:
+        node = self.store.get_geometry_definition(definition_id)
+        if node is None:
+            raise EntityNotFoundError(f"GeometryDefinition not found: {definition_id}")
+        return {"geometry": node}
+
     def get_neighborhood(self, global_id: str, *, hops: int, limit: int) -> Dict[str, Any]:
         center = self.store.get_building_object(global_id)
         if center is None:
@@ -47,7 +64,7 @@ class GraphService:
             "limit": limit,
             "nodes": {
                 "buildingObjects": building_nodes,
-                "geometryDefinitions": geometry["geometry_nodes"],
+                "geometryDefinitions": self._compact_geometry_nodes(geometry["geometry_nodes"]),
             },
             "edges": {
                 "relatesTo": relates_edges,
@@ -72,7 +89,7 @@ class GraphService:
             "limit": limit,
             "nodes": {
                 "buildingObjects": building_nodes,
-                "geometryDefinitions": geometry["geometry_nodes"],
+                "geometryDefinitions": self._compact_geometry_nodes(geometry["geometry_nodes"]),
             },
             "edges": {
                 "relatesTo": relates_edges,

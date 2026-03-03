@@ -111,6 +111,10 @@ class CsvGraphStore(GraphStore):
             "uses_geometry_edges": uses_edges,
         }
 
+    def get_geometry_definition(self, definition_id: int) -> Dict[str, Any] | None:
+        node = self.geometry_nodes.get(int(definition_id))
+        return node.copy() if node else None
+
     def get_overview(self) -> Dict[str, Any]:
         counter = Counter(edge["relationshipType"] for edge in self.relates_edges)
         rel_type_counts = [
@@ -127,4 +131,3 @@ class CsvGraphStore(GraphStore):
 
     def get_all_object_ids(self, limit: int) -> List[str]:
         return sorted(self.objects.keys())[:limit]
-

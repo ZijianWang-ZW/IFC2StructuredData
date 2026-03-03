@@ -92,6 +92,13 @@ def create_app(service: Optional[GraphService] = None, settings: Optional[Settin
         except EntityNotFoundError as exc:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    @app.get("/api/geometry/{definition_id}")
+    def get_geometry(definition_id: int) -> dict:
+        try:
+            return _service().get_geometry_detail(definition_id)
+        except EntityNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     @app.get("/api/graph/neighborhood")
     def get_neighborhood(
         globalId: str,

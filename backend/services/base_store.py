@@ -32,6 +32,10 @@ class GraphStore(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def get_geometry_definition(self, definition_id: int) -> Dict[str, Any] | None:
+        raise NotImplementedError
+
+    @abstractmethod
     def get_overview(self) -> Dict[str, Any]:
         raise NotImplementedError
 

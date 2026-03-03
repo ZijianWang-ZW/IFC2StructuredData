@@ -240,7 +240,14 @@ def build_viewer_assets(
 
     start = time.perf_counter()
     ifc = ifcopenshell.open(ifc_file_path)
-    elements = list(ifc.by_type("IfcProduct"))
+    all_products = list(ifc.by_type("IfcProduct"))
+    excluded_types = {"IfcOpeningElement"}
+    elements = [
+        element
+        for element in all_products
+        if element and hasattr(element, "is_a") and element.is_a() not in excluded_types
+    ]
+    excluded_count = len(all_products) - len(elements)
     viewer_dir = os.path.join(output_dir, "viewer")
     os.makedirs(viewer_dir, exist_ok=True)
 
@@ -266,6 +273,9 @@ def build_viewer_assets(
         "model_glb": glb_path,
         "object_index_json": index_path,
         "elements_total": len(elements),
+        "elements_total_raw": len(all_products),
+        "elements_excluded": excluded_count,
+        "excluded_ifc_types": sorted(excluded_types),
         "geometry_stats": stats,
         "object_index_count": len(object_index),
         "time_seconds": round(elapsed, 3),

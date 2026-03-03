@@ -160,6 +160,17 @@ class Neo4jGraphStore(GraphStore):
                 )
             return overview
 
+    def get_geometry_definition(self, definition_id: int) -> Dict[str, Any] | None:
+        query = """
+            MATCH (g:GeometryDefinition {definitionId: $definition_id})
+            RETURN g
+        """
+        with self.driver.session(database=self.database) as session:
+            record = session.run(query, definition_id=int(definition_id)).single()
+            if not record:
+                return None
+            return _node_to_dict(record["g"])
+
     def get_all_object_ids(self, limit: int) -> List[str]:
         query = """
             MATCH (o:BuildingObject)

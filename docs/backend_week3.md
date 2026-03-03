@@ -6,9 +6,12 @@ Implemented endpoints:
 
 1. `GET /api/health`
 2. `GET /api/object/{global_id}`
-3. `GET /api/graph/neighborhood?globalId=...&hops=1|2&limit=...`
-4. `GET /api/graph/overview`
-5. `GET /api/viewer/index`
+3. `GET /api/geometry/{definition_id}`
+4. `GET /api/graph/neighborhood?globalId=...&hops=1|2&limit=...`
+5. `GET /api/graph/overview`
+6. `GET /api/graph/full?limit=...`
+7. `GET /api/viewer/index`
+8. `GET /api/config`
 
 ## Architecture
 

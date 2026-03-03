@@ -42,7 +42,7 @@ body { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
 
 .panel {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
   min-height: 0;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -61,6 +61,37 @@ body { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
   min-height: 0;
   width: 100%;
   height: 100%;
+}
+
+.left {
+  grid-template-rows: auto 1fr auto;
+}
+
+.inspector {
+  border-top: 1px solid var(--line);
+  background: #f9fbfd;
+  max-height: 32vh;
+  min-height: 120px;
+  overflow: auto;
+}
+
+.inspectorTitle {
+  padding: 8px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.detailContent {
+  margin: 0;
+  padding: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "JetBrains Mono", "SF Mono", "Menlo", monospace;
 }
 
 .status {

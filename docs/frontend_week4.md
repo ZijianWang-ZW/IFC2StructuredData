@@ -12,6 +12,10 @@
    - hop selector (1/2)
    - focus by GlobalId
    - big picture view (`/api/graph/full`)
+4. Feedback integration:
+   - inspector panel for building/geometry/edge attributes
+   - building node double-click expands neighborhood
+   - graph payload optimization + frontend caching for better interaction speed
 
 ## Backend Extensions
 

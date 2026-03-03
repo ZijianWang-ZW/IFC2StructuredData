@@ -1,0 +1,58 @@
+# Feedback Integration Log
+
+- Updated: 2026-03-03
+- Scope: Week 4 prototype refinement before continuing Week 5
+
+## User Feedback
+
+1. Clicking a node should show its attributes, for both building nodes and geometry nodes.
+2. `IfcOpeningElement` should not render as a normal solid object in GLB; it should be transparent or ignored.
+3. Double-clicking a node should expand and reveal surrounding nodes.
+4. Clicking an edge should show the edge name.
+5. Graph interaction feels slow and should be optimized.
+
+## Implementation Plan
+
+1. Add right-side Inspector panel for node/edge attributes.
+2. Add `GET /api/geometry/{definition_id}` for on-demand geometry-node detail.
+3. Keep neighborhood/full graph payload lightweight by excluding heavy `geometryTreeJson` from list endpoints.
+4. Add graph double-click expansion behavior for building nodes.
+5. Add edge selection + edge metadata display.
+6. Skip `IfcOpeningElement` during viewer GLB asset generation.
+7. Improve graph performance with client-side caching + faster layout choices.
+
+## Acceptance Criteria
+
+1. Building node click shows IFC object metadata + extracted attributes.
+2. Geometry node click shows geometry definition metadata.
+3. Edge click shows relationship name/type.
+4. Double-click building node expands graph (additive, not full reset).
+5. Viewer build report indicates excluded `IfcOpeningElement`.
+6. API and unit tests pass; browser smoke flow works end-to-end.
+
+## Implementation Status
+
+- [x] Feedback 1: Node inspector implemented for building node + geometry node.
+- [x] Feedback 2: `IfcOpeningElement` excluded from GLB build pipeline.
+- [x] Feedback 3: Building node double-click triggers neighborhood expansion.
+- [x] Feedback 4: Edge click now shows relationship name/type in inspector.
+- [x] Feedback 5: Graph interaction optimized with:
+  - lightweight graph payload (no `geometryTreeJson` in neighborhood/full)
+  - on-demand geometry detail endpoint
+  - frontend caching (`neighborhood`, `full graph`, object/geometry detail)
+  - faster default layouts for neighborhood/full views
+  - Cytoscape viewport performance flags
+
+## Validation Summary
+
+1. Unit tests:
+   - `python -m unittest discover -s tests -v`
+   - Result: `20 tests, all passed`
+2. Viewer assets rebuild:
+   - Command: `python scripts/build_viewer_assets.py test_trimble/Architecture_v1.ifc test_output/viewer_arch --threads 4`
+   - Result: `Excluded IFC types: IfcOpeningElement`, `Excluded elements: 102`
+3. Browser checks (Playwright):
+   - Building node attributes displayed in inspector.
+   - Geometry node attributes loaded via `/api/geometry/{definition_id}`.
+   - Edge click shows `edgeName` + `relationshipType`.
+   - Double-click expansion increased graph from `20` nodes to `182` nodes in smoke run.

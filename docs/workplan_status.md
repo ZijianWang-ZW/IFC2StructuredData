@@ -9,7 +9,7 @@
 2. Week 2: Done
 3. Week 3: Done
 4. Week 4: Done
-5. Week 5: Pending
+5. Week 5: In Progress
 6. Week 6: Pending
 
 ## Completed Milestones
@@ -48,6 +48,16 @@
 1. Week 5 interaction refinement (filters, better big-picture controls, graph readability).
 2. Week 5 frontend robustness (error states, loading states, camera reset presets).
 3. Optional: add automated Playwright smoke script to CI.
+
+## Week 5 Update (Feedback Batch 1)
+
+1. Added Inspector panel to show building node, geometry node, and edge attributes.
+2. Added double-click node expansion in graph panel.
+3. Added graph performance optimizations:
+   - lighter graph payloads (defer `geometryTreeJson` to detail endpoint)
+   - frontend request/result caching
+   - faster layout defaults + viewport performance flags
+4. Updated viewer asset pipeline to exclude `IfcOpeningElement` from exported GLB.
 
 ## Environment Requirements Before Continue
 
