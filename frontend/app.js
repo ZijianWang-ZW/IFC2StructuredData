@@ -17,6 +17,11 @@ const GRAPH_CONTROL_IDS = [
 ];
 
 const CAMERA_CONTROL_IDS = ['btnCamFit', 'btnCamIso', 'btnCamTop', 'btnCamFront'];
+const TOPOLOGY_IFC_TYPES = new Set(['IfcSite', 'IfcBuilding', 'IfcBuildingStorey']);
+const TOPOLOGY_RELATIONSHIP_TYPES = new Set([
+  'IfcRelAggregates',
+  'IfcRelContainedInSpatialStructure',
+]);
 
 const state = {
   viewerModelUrl: '/viewer-files/model.glb',
@@ -41,6 +46,9 @@ const state = {
   graphBusyCount: 0,
   lastNodeTapAt: 0,
   lastNodeTapId: null,
+  graphContextNodeId: null,
+  graphPreviewNodeId: null,
+  graphTooltipEl: null,
   cy: null,
   scene: null,
   camera: null,
@@ -63,6 +71,63 @@ function setStatus(id, text, error = false) {
 function setText(id, text) {
   const el = document.getElementById(id);
   if (el) el.textContent = text;
+}
+
+function isTopologyIfcType(ifcType) {
+  return TOPOLOGY_IFC_TYPES.has(String(ifcType || ''));
+}
+
+function isTopologyRelationship(relationshipType) {
+  return TOPOLOGY_RELATIONSHIP_TYPES.has(String(relationshipType || ''));
+}
+
+function normalizeName(value) {
+  if (value === null || value === undefined) return '';
+  const text = String(value).trim();
+  return text;
+}
+
+function buildBuildingNodeLabel(objectRow) {
+  const ifcType = objectRow.ifcType || 'Unknown';
+  const name = normalizeName(objectRow.name);
+  if (name) return `${name}\n${ifcType}`;
+  return `${ifcType}\n${objectRow.GlobalId}`;
+}
+
+function ensureGraphTooltip() {
+  if (state.graphTooltipEl) return state.graphTooltipEl;
+  const parent = document.getElementById('graphCanvas');
+  if (!parent) return null;
+  const el = document.createElement('div');
+  el.className = 'graphTooltip';
+  parent.appendChild(el);
+  state.graphTooltipEl = el;
+  return el;
+}
+
+function hideGraphTooltip() {
+  const el = state.graphTooltipEl;
+  if (!el) return;
+  el.classList.remove('visible');
+}
+
+function showGraphTooltip(evt, node) {
+  const el = ensureGraphTooltip();
+  if (!el || !state.cy) return;
+  const data = node.data() || {};
+  const nodeType = data.type === 'geometry' ? 'Geometry' : (data.ifcType || 'BuildingObject');
+  const title = data.type === 'geometry'
+    ? `Geometry#${data.definitionId}`
+    : (normalizeName(data.name) || data.ifcType || data.globalId || 'BuildingObject');
+  const detail = data.type === 'geometry'
+    ? `DefinitionId: ${data.definitionId}`
+    : `GlobalId: ${data.globalId}`;
+  el.textContent = `${title}\n${nodeType}\n${detail}`;
+
+  const pos = evt.renderedPosition || { x: 0, y: 0 };
+  el.style.left = `${Math.round(pos.x + 14)}px`;
+  el.style.top = `${Math.round(pos.y + 14)}px`;
+  el.classList.add('visible');
 }
 
 function setControlsDisabled(ids, disabled) {
@@ -341,7 +406,6 @@ function initGraph() {
     hideEdgesOnViewport: true,
     textureOnViewport: true,
     motionBlur: false,
-    wheelSensitivity: 0.2,
     pixelRatio: 1,
     style: [
       {
@@ -350,9 +414,31 @@ function initGraph() {
           'background-color': '#0f766e',
           label: 'data(label)',
           'font-size': 10,
-          'text-wrap': 'ellipsis',
-          'text-max-width': 90,
+          'min-zoomed-font-size': 7,
+          'text-wrap': 'wrap',
+          'text-overflow-wrap': 'anywhere',
+          'text-max-width': 170,
+          'text-valign': 'bottom',
+          'text-halign': 'center',
+          'text-margin-y': 7,
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.82,
+          'text-background-shape': 'roundrectangle',
+          'text-background-padding': 1.5,
+          'text-border-opacity': 0,
+          width: 24,
+          height: 24,
           color: '#0f172a',
+        },
+      },
+      {
+        selector: 'node[type = "building"][isTopologyNode = 1]',
+        style: {
+          'background-color': '#2563eb',
+          'border-width': 2,
+          'border-color': '#1e40af',
+          width: 30,
+          height: 30,
         },
       },
       {
@@ -362,8 +448,34 @@ function initGraph() {
           shape: 'diamond',
           label: 'data(label)',
           'font-size': 10,
-          'text-wrap': 'ellipsis',
-          'text-max-width': 90,
+          'min-zoomed-font-size': 7,
+          'text-wrap': 'wrap',
+          'text-overflow-wrap': 'anywhere',
+          'text-max-width': 120,
+          'text-valign': 'bottom',
+          'text-halign': 'center',
+          'text-margin-y': 7,
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.82,
+          'text-background-shape': 'roundrectangle',
+          'text-background-padding': 1.5,
+          width: 24,
+          height: 24,
+        },
+      },
+      {
+        selector: 'node.context',
+        style: {
+          'border-width': 3,
+          'border-color': '#0b5ed7',
+        },
+      },
+      {
+        selector: 'node.hovered',
+        style: {
+          'border-width': 3,
+          'border-color': '#f59e0b',
+          'z-index': 9999,
         },
       },
       {
@@ -381,6 +493,15 @@ function initGraph() {
           'target-arrow-color': '#94a3b8',
           'line-color': '#94a3b8',
           width: 1.4,
+          opacity: 0.9,
+        },
+      },
+      {
+        selector: 'edge[type = "relates"][isTopologyEdge = 1]',
+        style: {
+          'line-color': '#3b82f6',
+          'target-arrow-color': '#3b82f6',
+          width: 2.2,
         },
       },
       {
@@ -391,6 +512,14 @@ function initGraph() {
           'target-arrow-color': '#f59e0b',
           'line-style': 'dashed',
           width: 1.2,
+          opacity: 0.85,
+        },
+      },
+      {
+        selector: 'edge.context',
+        style: {
+          width: 2.6,
+          opacity: 1,
         },
       },
       {
@@ -399,6 +528,19 @@ function initGraph() {
           width: 3,
           'line-color': '#2563eb',
           'target-arrow-color': '#2563eb',
+          label: 'data(relationshipType)',
+          'font-size': 9,
+          color: '#1e293b',
+          'text-rotation': 'autorotate',
+          'text-background-color': '#ffffff',
+          'text-background-opacity': 0.88,
+          'text-background-padding': 1.5,
+        },
+      },
+      {
+        selector: '.faded',
+        style: {
+          opacity: 0.14,
         },
       },
       {
@@ -419,6 +561,7 @@ function initGraph() {
       const isDoubleTap = state.lastNodeTapId === node.id() && now - state.lastNodeTapAt < 350;
       state.lastNodeTapAt = now;
       state.lastNodeTapId = node.id();
+      setPersistentGraphContext(node.id());
 
       if (type === 'building') {
         const gid = node.data('globalId');
@@ -440,12 +583,34 @@ function initGraph() {
   state.cy.on('tap', 'edge', (evt) => {
     const edge = evt.target;
     markEdgeSelection(edge.id());
+    setPersistentGraphContext(edge.source().id());
     showEdgeDetails(edge.data());
+  });
+
+  state.cy.on('mouseover', 'node', (evt) => {
+    const node = evt.target;
+    state.graphPreviewNodeId = node.id();
+    showGraphTooltip(evt, node);
+    applyGraphContext();
+  });
+
+  state.cy.on('mousemove', 'node', (evt) => {
+    showGraphTooltip(evt, evt.target);
+  });
+
+  state.cy.on('mouseout', 'node', () => {
+    state.graphPreviewNodeId = null;
+    hideGraphTooltip();
+    applyGraphContext();
   });
 
   state.cy.on('tap', (evt) => {
     if (evt.target === state.cy) {
       clearEdgeSelection();
+      state.graphContextNodeId = null;
+      state.graphPreviewNodeId = null;
+      hideGraphTooltip();
+      applyGraphContext();
     }
   });
 }
@@ -483,7 +648,6 @@ function graphElementsFromData(payload, { resetMaps = true } = {}) {
   const geometryNodes = payload.nodes?.geometryDefinitions || [];
   const relates = payload.edges?.relatesTo || [];
   const uses = payload.edges?.usesGeometry || [];
-  const denseMode = buildingNodes.length + geometryNodes.length > 260;
 
   if (resetMaps) {
     state.objectTypeMap = {};
@@ -493,9 +657,8 @@ function graphElementsFromData(payload, { resetMaps = true } = {}) {
   for (const o of buildingNodes) {
     const ifcType = o.ifcType || 'Unknown';
     state.objectTypeMap[o.GlobalId] = ifcType;
-    const label = denseMode
-      ? `${ifcType}`
-      : `${ifcType}\n${String(o.GlobalId).slice(-8)}`;
+    const isTopologyNode = isTopologyIfcType(ifcType) ? 1 : 0;
+    const label = buildBuildingNodeLabel(o);
     elements.push({
       data: {
         id: `obj:${o.GlobalId}`,
@@ -503,6 +666,8 @@ function graphElementsFromData(payload, { resetMaps = true } = {}) {
         label,
         globalId: o.GlobalId,
         ifcType,
+        name: normalizeName(o.name),
+        isTopologyNode,
       },
     });
   }
@@ -514,20 +679,23 @@ function graphElementsFromData(payload, { resetMaps = true } = {}) {
       data: {
         id: `geo:${definitionId}`,
         type: 'geometry',
-        label: denseMode ? `G#${definitionId}` : `Geometry#${definitionId}`,
+        label: `Geometry#${definitionId}`,
         definitionId,
       },
     });
   }
 
   for (const e of relates) {
+    const relationshipType = e.relationshipType || 'RELATES_TO';
+    const isTopologyEdge = isTopologyRelationship(relationshipType) ? 1 : 0;
     elements.push({
       data: {
         id: `rel:${e.src}:${e.dst}:${e.relationshipType}`,
         source: `obj:${e.src}`,
         target: `obj:${e.dst}`,
         type: 'relates',
-        relationshipType: e.relationshipType || 'RELATES_TO',
+        relationshipType,
+        isTopologyEdge,
       },
     });
   }
@@ -570,41 +738,49 @@ async function getFullGraphPayload(limit = 1000) {
 
 function runLayout(mode, focusGlobalId = null) {
   if (!state.cy) return;
-  if (mode === 'big') {
-    state.cy.layout({
-      name: 'grid',
-      animate: false,
-      fit: true,
-      padding: 20,
-      avoidOverlap: true,
-    }).run();
-    return;
-  }
+  const nodeCount = state.cy.nodes().length;
+  const base = {
+    name: 'cose',
+    fit: true,
+    padding: 24,
+    animate: nodeCount <= 260 ? 'end' : false,
+    animationDuration: 260,
+    randomize: mode !== 'expand',
+    idealEdgeLength: nodeCount <= 250 ? 120 : 90,
+    nodeRepulsion: nodeCount <= 250 ? 420000 : 180000,
+    edgeElasticity: 70,
+    gravity: 0.22,
+    numIter: nodeCount <= 250 ? 900 : 450,
+  };
 
   if (mode === 'expand') {
     state.cy.layout({
-      name: 'cose',
-      animate: false,
+      ...base,
       fit: false,
-      padding: 20,
-      numIter: 100,
       randomize: false,
-      idealEdgeLength: 80,
-      nodeRepulsion: 200000,
+      numIter: nodeCount <= 250 ? 700 : 360,
     }).run();
     return;
   }
 
-  const roots = focusGlobalId ? [`obj:${focusGlobalId}`] : undefined;
-  state.cy.layout({
-    name: 'breadthfirst',
-    directed: false,
-    spacingFactor: 1.05,
-    fit: true,
-    padding: 22,
-    roots,
-    animate: false,
-  }).run();
+  if (mode === 'big') {
+    state.cy.layout({
+      ...base,
+      fit: true,
+      animate: false,
+      randomize: true,
+      numIter: nodeCount <= 350 ? 700 : 300,
+      idealEdgeLength: nodeCount <= 350 ? 100 : 80,
+      nodeRepulsion: nodeCount <= 350 ? 220000 : 120000,
+    }).run();
+    return;
+  }
+
+  const focusNodeId = focusGlobalId ? `obj:${focusGlobalId}` : null;
+  if (focusNodeId && state.cy.getElementById(focusNodeId).length) {
+    state.cy.getElementById(focusNodeId).position({ x: 0, y: 0 });
+  }
+  state.cy.layout(base).run();
 }
 
 function updateFilterOptionsFromGraph() {
@@ -699,9 +875,13 @@ function applyGraphFilters() {
   const visibleNodeCount = state.cy.nodes().filter((n) => !n.hasClass('hidden')).length;
   const visibleEdgeCount = state.cy.edges().filter((e) => !e.hasClass('hidden')).length;
   setStatus('graphStatus', `Graph view: ${visibleNodeCount} nodes, ${visibleEdgeCount} edges`);
+  applyGraphContext();
 }
 
 function replaceGraph(elements, mode, focusGlobalId = null) {
+  state.graphContextNodeId = null;
+  state.graphPreviewNodeId = null;
+  hideGraphTooltip();
   state.cy.startBatch();
   state.cy.elements().remove();
   state.cy.add(elements);
@@ -710,6 +890,44 @@ function replaceGraph(elements, mode, focusGlobalId = null) {
   clearEdgeSelection();
   updateFilterOptionsFromGraph();
   applyGraphFilters();
+}
+
+function applyGraphContext() {
+  if (!state.cy) return;
+  const focusNodeId = state.graphPreviewNodeId || state.graphContextNodeId;
+  state.cy.elements().removeClass('faded context hovered');
+  if (!focusNodeId) return;
+
+  const node = state.cy.getElementById(focusNodeId);
+  if (!node || !node.length || node.hasClass('hidden')) return;
+
+  const visible = state.cy.elements().filter((el) => !el.hasClass('hidden'));
+  if (!visible.length) return;
+  visible.addClass('faded');
+
+  const neighborhood = node.closedNeighborhood().filter((el) => !el.hasClass('hidden'));
+  neighborhood.removeClass('faded');
+  neighborhood.addClass('context');
+  node.removeClass('context');
+  node.addClass('context');
+
+  if (state.graphPreviewNodeId && state.graphPreviewNodeId === focusNodeId) {
+    node.addClass('hovered');
+  }
+}
+
+function setPersistentGraphContext(nodeId) {
+  state.graphContextNodeId = nodeId || null;
+  state.graphPreviewNodeId = null;
+  applyGraphContext();
+}
+
+function countTopologyNodes(buildingNodes) {
+  let count = 0;
+  for (const node of buildingNodes || []) {
+    if (isTopologyIfcType(node.ifcType)) count += 1;
+  }
+  return count;
 }
 
 async function refreshNeighborhood(globalId, { force = false } = {}) {
@@ -738,9 +956,10 @@ async function refreshNeighborhood(globalId, { force = false } = {}) {
     state.currentHops = hops;
     state.lastLocalView = { globalId, hops };
     updateBackButtonState();
+    const topologyCount = countTopologyNodes(payload.nodes.buildingObjects);
     setStatus(
       'graphStatus',
-      `Graph: ${payload.nodes.buildingObjects.length} objects, ${payload.edges.relatesTo.length} relations`
+      `Graph: ${payload.nodes.buildingObjects.length} objects, ${payload.edges.relatesTo.length} relations, topology nodes=${topologyCount}`
     );
   });
 }
@@ -787,7 +1006,8 @@ async function showBigPicture() {
     state.graphMode = 'big';
     state.currentCenterGlobalId = null;
     updateBackButtonState();
-    setStatus('graphStatus', `Graph(big): ${payload.nodes.buildingObjects.length} objects, ${payload.edges.relatesTo.length} relations`);
+    const topologyCount = countTopologyNodes(payload.nodes.buildingObjects);
+    setStatus('graphStatus', `Graph(big): ${payload.nodes.buildingObjects.length} objects, ${payload.edges.relatesTo.length} relations, topology nodes=${topologyCount}`);
   });
 }
 
@@ -806,6 +1026,7 @@ function markGraphSelection(globalId) {
   const node = state.cy.getElementById(`obj:${globalId}`);
   if (node && node.length) {
     node.addClass('selected');
+    setPersistentGraphContext(node.id());
     state.cy.center(node);
   }
 }

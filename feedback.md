@@ -10,6 +10,8 @@
 3. Double-clicking a node should expand and reveal surrounding nodes.
 4. Clicking an edge should show the edge name.
 5. Graph interaction feels slow and should be optimized.
+6. Graph node names are incomplete and interaction feels rigid; improve toward Neo4j-style behavior.
+7. Confirm whether site-building-storey topology exists and color those nodes differently.
 
 ## Implementation Plan
 
@@ -64,7 +66,33 @@
 3. Added viewer camera presets (`Fit`, `Iso`, `Top`, `Front`).
 4. Added loading/error guarded states to improve interaction stability.
 5. Re-validated with browser smoke:
-   - big picture: ~139ms
-   - back to focus: ~12ms
-   - filtered big graph (`IfcSpace`): visible nodes reduced from `868` to `39`
-   - expansion sample: `+164` nodes in one expansion flow
+  - big picture: ~139ms
+  - back to focus: ~12ms
+  - filtered big graph (`IfcSpace`): visible nodes reduced from `868` to `39`
+  - expansion sample: `+164` nodes in one expansion flow
+
+## Additional Refinement (Neo4j-like UX + Topology Highlight)
+
+1. Node labels switched from ellipsis truncation to wrapped full labels (name + IFC type), with hover tooltip showing full detail.
+2. Added Neo4j-style local-context interaction:
+   - click node => immediate neighborhood emphasized
+   - non-neighborhood nodes/edges fade
+   - hover preview context and restore on mouseout
+3. Layout strategy switched to force-directed (`cose`) for neighborhood, expansion, and big picture to improve natural graph motion.
+4. Added topology visual semantics:
+   - topology node detection by IFC type (`IfcSite`, `IfcBuilding`, `IfcBuildingStorey`)
+   - topology edge detection by relation type (`IfcRelAggregates`, `IfcRelContainedInSpatialStructure`)
+   - dedicated colors for topology nodes and topology edges
+5. Graph status now reports topology node count for loaded view.
+
+### Additional Validation
+
+1. Data confirmation:
+   - `example_str/relationships.csv` includes `IfcRelAggregates` and `IfcRelContainedInSpatialStructure`.
+2. Browser validation (Playwright CLI):
+   - big picture includes topology nodes (`topologyNodeCount=6`) and topology edges (`topologyEdgeCount=625`) on `arch_v1_pm`.
+   - topology colors verified from Cytoscape computed styles:
+     - topology node: `rgb(37,99,235)`
+     - normal building node: `rgb(15,118,110)`
+   - neighborhood context fade works (`fadedAfterTap > 0`) and hover class toggles correctly.
+   - double-click/expand path still works (`38 -> 202` nodes in one expansion check).

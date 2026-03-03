@@ -20,6 +20,14 @@
    - in-place hidden-class filtering on Cytoscape elements
    - dynamic filter option generation from loaded graph
    - tuned layout strategy for neighborhood, expansion, and big-picture views
+6. Neo4j-style interaction refinement:
+   - force-directed graph behavior (`cose`) for more natural graph movement
+   - click-to-emphasize local neighborhood with non-neighborhood fading
+   - hover preview context + tooltip for full node text
+7. Topology semantics:
+   - topology node highlighting (`IfcSite`, `IfcBuilding`, `IfcBuildingStorey`)
+   - topology edge highlighting (`IfcRelAggregates`, `IfcRelContainedInSpatialStructure`)
+   - topology count surfaced in graph status line
 
 ## Validation
 
@@ -32,3 +40,7 @@
    - node/edge/geometry inspector behavior
    - camera preset movement checks
    - double-click expansion path confirmed with additive node growth
+3. Additional browser smoke (Playwright CLI):
+   - full-label rendering available for building nodes (`name + ifcType`)
+   - hover tooltip displays complete text for dense/long names
+   - topology style check passed (distinct node/edge color classes)
