@@ -63,3 +63,19 @@ class GraphService:
     def get_viewer_index(self) -> Dict[str, Dict[str, Any]]:
         return self.viewer_index_repo.get_all()
 
+    def get_full_graph(self, *, limit: int) -> Dict[str, Any]:
+        object_ids = self.store.get_all_object_ids(limit)
+        building_nodes = self.store.get_building_objects(object_ids)
+        relates_edges = self.store.get_relates_edges(object_ids)
+        geometry = self.store.get_geometry_for_objects(object_ids)
+        return {
+            "limit": limit,
+            "nodes": {
+                "buildingObjects": building_nodes,
+                "geometryDefinitions": geometry["geometry_nodes"],
+            },
+            "edges": {
+                "relatesTo": relates_edges,
+                "usesGeometry": geometry["uses_geometry_edges"],
+            },
+        }

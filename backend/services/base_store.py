@@ -35,3 +35,6 @@ class GraphStore(ABC):
     def get_overview(self) -> Dict[str, Any]:
         raise NotImplementedError
 
+    @abstractmethod
+    def get_all_object_ids(self, limit: int) -> List[str]:
+        raise NotImplementedError

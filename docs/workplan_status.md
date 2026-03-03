@@ -8,7 +8,7 @@
 1. Week 1: Done
 2. Week 2: Done
 3. Week 3: Done
-4. Week 4: In queue
+4. Week 4: Done
 5. Week 5: Pending
 6. Week 6: Pending
 
@@ -34,15 +34,20 @@
 4. Viewer index endpoint.
 5. Browser smoke test on Swagger and health endpoint.
 
-## Immediate Next Work (Week 4)
+### Week 4 - Frontend Dual Pane
 
-1. Scaffold frontend app (single-page split layout: left viewer, right graph).
-2. Integrate Three.js GLB viewer with object picking by `GlobalId`.
-3. Integrate graph panel with neighborhood fetch from backend.
-4. Implement bidirectional selection sync:
-   - Viewer select -> graph focus
-   - Graph select -> viewer focus/highlight
-5. Add minimal E2E smoke scenario for sync path.
+1. Frontend scaffolded at `frontend/` and served from backend.
+2. Three.js model viewer integrated with GLB loading.
+3. Cytoscape graph panel integrated with neighborhood API.
+4. Bidirectional sync implemented between viewer and graph selection.
+5. Added `CSV` backend mode for no-Neo4j local runs.
+6. Browser smoke test completed with working interactions.
+
+## Immediate Next Work (Week 5)
+
+1. Week 5 interaction refinement (filters, better big-picture controls, graph readability).
+2. Week 5 frontend robustness (error states, loading states, camera reset presets).
+3. Optional: add automated Playwright smoke script to CI.
 
 ## Environment Requirements Before Continue
 

@@ -1,0 +1,87 @@
+:root {
+  --bg: #f2f5f7;
+  --panel: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --line: #d1d5db;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; font-family: "IBM Plex Sans", "Avenir Next", sans-serif; color: var(--text); background: var(--bg); }
+body { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, #eef8f6, #f7fbff);
+}
+.title { font-weight: 700; letter-spacing: 0.2px; }
+
+.actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.actions input, .actions select, .actions button {
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+}
+.actions button { cursor: pointer; background: #ecf4ff; border-color: #b6d4fe; }
+.actions button:hover { background: #ddeeff; }
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  padding: 10px;
+  min-height: 0;
+}
+
+.panel {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.panelHeader {
+  padding: 8px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+  background: #fbfcfd;
+}
+
+#viewerCanvas, #graphCanvas {
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.status {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.infoBar {
+  display: flex;
+  gap: 24px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 1fr; }
+  .panel { min-height: 45vh; }
+}

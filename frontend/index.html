@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IFC Graph Viewer</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="title">IFC Graph Viewer</div>
+    <div class="actions">
+      <label for="hopsSelect">Neighborhood</label>
+      <select id="hopsSelect">
+        <option value="1">1-hop</option>
+        <option value="2">2-hop</option>
+      </select>
+      <button id="btnBigPicture">Big Picture</button>
+      <input id="globalIdInput" placeholder="GlobalId" />
+      <button id="btnFocus">Focus</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel left">
+      <div class="panelHeader">Model Viewer</div>
+      <div id="viewerCanvas"></div>
+      <div id="viewerStatus" class="status">Viewer: initializing...</div>
+    </section>
+
+    <section class="panel right">
+      <div class="panelHeader">Graph</div>
+      <div id="graphCanvas"></div>
+      <div id="graphStatus" class="status">Graph: waiting...</div>
+    </section>
+  </main>
+
+  <aside class="infoBar">
+    <div><strong>Selected:</strong> <span id="selectedId">None</span></div>
+    <div><strong>Type:</strong> <span id="selectedType">-</span></div>
+    <div><strong>Overview:</strong> <span id="overviewText">Loading...</span></div>
+  </aside>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>

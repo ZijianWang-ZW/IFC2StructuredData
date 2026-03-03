@@ -9,6 +9,7 @@ from typing import Any, Dict, List
 from fastapi.testclient import TestClient
 
 from backend.app import create_app
+from backend.settings import Settings
 from backend.services.base_store import GraphStore
 from backend.services.graph_service import GraphService
 from backend.services.viewer_index import ViewerIndexRepository
@@ -70,9 +71,17 @@ class FakeGraphStore(GraphStore):
             "relationship_type_counts": [{"relationshipType": "IfcRelAggregates", "count": 1}],
         }
 
+    def get_all_object_ids(self, limit: int) -> List[str]:
+        return sorted(self.objects.keys())[:limit]
+
 
 class TestBackendAPI(unittest.TestCase):
     def setUp(self) -> None:
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        index_path = os.path.join(self.tmp_dir.name, "index.html")
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write("<html><body>frontend-ok</body></html>")
+
         tmp = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json")
         json.dump({"A": {"node_index": 1, "mesh_index": 0}}, tmp)
         tmp.close()
@@ -80,12 +89,25 @@ class TestBackendAPI(unittest.TestCase):
 
         repo = ViewerIndexRepository(self.tmp_path)
         service = GraphService(store=FakeGraphStore(), viewer_index_repo=repo)
-        app = create_app(service)
+        settings = Settings(
+            graph_store_mode="csv",
+            graph_output_dir=None,
+            neo4j_uri="bolt://localhost:7687",
+            neo4j_user="neo4j",
+            neo4j_password="",
+            neo4j_database="neo4j",
+            viewer_index_path=self.tmp_path,
+            viewer_files_dir=None,
+            viewer_model_url="/viewer-files/model.glb",
+            frontend_dir=self.tmp_dir.name,
+        )
+        app = create_app(service, settings=settings)
         self.client = TestClient(app)
 
     def tearDown(self) -> None:
         if os.path.exists(self.tmp_path):
             os.unlink(self.tmp_path)
+        self.tmp_dir.cleanup()
 
     def test_health(self) -> None:
         r = self.client.get("/api/health")
@@ -121,6 +143,23 @@ class TestBackendAPI(unittest.TestCase):
         r = self.client.get("/api/viewer/index")
         self.assertEqual(r.status_code, 200)
         self.assertIn("A", r.json())
+
+    def test_config(self) -> None:
+        r = self.client.get("/api/config")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.json()["viewerModelUrl"], "/viewer-files/model.glb")
+
+    def test_full_graph(self) -> None:
+        r = self.client.get("/api/graph/full", params={"limit": 100})
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertIn("nodes", data)
+        self.assertGreaterEqual(len(data["nodes"]["buildingObjects"]), 1)
+
+    def test_root_frontend(self) -> None:
+        r = self.client.get("/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("frontend-ok", r.text)
 
 
 if __name__ == "__main__":

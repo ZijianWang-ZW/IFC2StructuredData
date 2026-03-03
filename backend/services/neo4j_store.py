@@ -160,3 +160,13 @@ class Neo4jGraphStore(GraphStore):
                 )
             return overview
 
+    def get_all_object_ids(self, limit: int) -> List[str]:
+        query = """
+            MATCH (o:BuildingObject)
+            RETURN o.GlobalId AS global_id
+            ORDER BY global_id
+            LIMIT $limit
+        """
+        with self.driver.session(database=self.database) as session:
+            rows = session.run(query, limit=limit)
+            return [row["global_id"] for row in rows if row.get("global_id")]
