@@ -5,6 +5,7 @@
 *.log
 *.json
 *.pyc
+.DS_Store
 /test_*
 
 run_all_tests.py
